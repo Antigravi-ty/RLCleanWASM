@@ -44,7 +44,7 @@ export class OnlineDialog {
     this.hostColorSlot = savedColorSlot ?? 3; // Default Blue
     this.hostColorHex = CAR_COLOR_SLOTS[this.hostColorSlot].hex;
 
-    this.clientColorSlot = (this.hostColorSlot === 0 ? 3 : 0); // Default Red
+    this.clientColorSlot = savedColorSlot ?? (this.hostColorSlot === 0 ? 3 : 0);
     this.clientColorHex = CAR_COLOR_SLOTS[this.clientColorSlot].hex;
 
     // Active channels and server tracking
@@ -881,7 +881,18 @@ export class OnlineDialog {
 
         this._savePreferredColorSlot(slot.id);
 
-        if (role === 'host' || role === 'lobby') {
+        if (role === 'lobby') {
+          this.hostColorSlot = slot.id;
+          this.hostColorHex = slot.hex;
+          this.clientColorSlot = slot.id;
+          this.clientColorHex = slot.hex;
+          this.callbacks.onColorSelect?.(0, slot.id, slot.hex);
+          this.callbacks.onColorSelect?.(1, slot.id, slot.hex);
+          this._renderLobbyView();
+          return;
+        }
+
+        if (role === 'host') {
           this.hostColorSlot = slot.id;
           this.hostColorHex = slot.hex;
           this.callbacks.onColorSelect?.(0, slot.id, slot.hex);
@@ -905,11 +916,7 @@ export class OnlineDialog {
             } catch (_) {}
           }
 
-          if (role === 'host') {
-            this._renderHostView();
-          } else {
-            this._renderLobbyView();
-          }
+          this._renderHostView();
         } else {
           this.clientColorSlot = slot.id;
           this.clientColorHex = slot.hex;
@@ -987,7 +994,14 @@ export class OnlineDialog {
 
       this.hostP2PChannel.onColorChange = (msg) => {
         console.log('[OnlineDialog] Opponent changed color:', msg);
-        this.callbacks.onColorSelect?.(msg.carIndex ?? 1, msg.slotId, msg.hex);
+        const cIdx = msg.carIndex ?? 1;
+        if (msg.slotId !== undefined) {
+          this.hostP2PChannel.peerColorSlot = msg.slotId;
+        }
+        if (msg.hex !== undefined) {
+          this.hostP2PChannel.peerColorHex = msg.hex;
+        }
+        this.callbacks.onColorSelect?.(cIdx, msg.slotId, msg.hex);
         this._renderHostView();
       };
 
@@ -1442,7 +1456,15 @@ export class OnlineDialog {
 
       this.clientP2PChannel.onColorChange = (msg) => {
         console.log('[OnlineDialog] Remote host changed color:', msg);
-        this.callbacks.onColorSelect?.(msg.carIndex ?? 0, msg.slotId, msg.hex);
+        const cIdx = msg.carIndex ?? 0;
+        if (msg.slotId !== undefined) {
+          this.clientP2PChannel.peerColorSlot = msg.slotId;
+          this.discoveredHostColorSlot = msg.slotId;
+        }
+        if (msg.hex !== undefined) {
+          this.clientP2PChannel.peerColorHex = msg.hex;
+        }
+        this.callbacks.onColorSelect?.(cIdx, msg.slotId, msg.hex);
         this._renderJoinView();
       };
 

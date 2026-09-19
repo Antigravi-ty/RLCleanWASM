@@ -964,13 +964,14 @@ export class ArenaWorld {
 
 
   setCarColor(carIndex, colorVal) {
+    if (!this.carColors) this.carColors = [];
+    const num = typeof colorVal === "string" ? parseInt(colorVal.replace("#", ""), 16) : colorVal;
+    this.carColors[carIndex] = num;
+
     const carRoot = this.cars[carIndex];
     if (!carRoot) return;
-    const num = typeof colorVal === "string" ? parseInt(colorVal.replace("#", ""), 16) : colorVal;
     const palette = createCarPaintMaterial(num, undefined, resolveContext);
     applyVehicleMaterials(carRoot, palette, resolveContext);
-    if (!this.carColors) this.carColors = [];
-    this.carColors[carIndex] = num;
   }
 
   async ensureOpponent() {
@@ -1155,6 +1156,9 @@ export class ArenaWorld {
     this.cars.push(carRoot);
     this.carVisuals.push(visual);
     this.scene.add(carRoot);
+    if (this.carColors && this.carColors[teamIndex] !== undefined && this.carColors[teamIndex] !== null) {
+      this.setCarColor(teamIndex, this.carColors[teamIndex]);
+    }
     this.markRenderTreeChanged();
   }
 

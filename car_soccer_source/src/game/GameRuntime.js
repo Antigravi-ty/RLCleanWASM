@@ -1,3 +1,4 @@
+import { CAR_COLOR_SLOTS } from "../entities/CarColorConstants.js";
 import { CameraController, CameraManager, CAMERA_MODES } from '../camera/index.js';
 import { verifyCameraMicrokernelIntegrity } from '../camera/exempt_pov_microkernel/index.js';
 /**
@@ -1242,9 +1243,18 @@ export class GameRuntime {
    * @param {number} carIndex
    * @param {string|number} colorVal
    */
-  setCarColor(carIndex, colorVal) {
+  setCarColor(carIndex, colorVal, broadcast = true) {
     if (this.arena?.setCarColor) {
       this.arena.setCarColor(carIndex, colorVal);
+    }
+    if (broadcast && this.networkChannel?.sendColorChange) {
+      const hex = typeof colorVal === 'number'
+        ? '#' + colorVal.toString(16).padStart(6, '0')
+        : String(colorVal);
+      const slot = CAR_COLOR_SLOTS.find(s => s.hex.toLowerCase() === hex.toLowerCase()) || CAR_COLOR_SLOTS[0];
+      try {
+        this.networkChannel.sendColorChange(slot.id, hex, carIndex);
+      } catch (_) {}
     }
   }
 
@@ -1323,7 +1333,9 @@ export class GameRuntime {
 
     this.authoritativeServer.notifyPlayerJoined(0, playerName, 'host');
 
-    if (!this.networkHUD) {
+    if (this.networkHUD) {
+      this.networkHUD.setSession(this.networkReconciler, this.networkChannel);
+    } else {
       this.networkHUD = new NetworkReconciliationHUD(
         this.container,
         this.networkReconciler,
@@ -1363,12 +1375,21 @@ export class GameRuntime {
       useBitPacking: false
     });
 
-    if (!this.networkHUD) {
+    if (this.networkHUD) {
+      this.networkHUD.setSession(this.networkReconciler, this.networkChannel);
+    } else {
       this.networkHUD = new NetworkReconciliationHUD(
         this.container,
         this.networkReconciler,
         this.networkChannel
       );
+    }
+
+    if (this.networkChannel) {
+      this.networkChannel.onColorChange = (msg) => {
+        const cIdx = msg.carIndex ?? (this.playerCarIndex === 0 ? 1 : 0);
+        this.setCarColor(cIdx, msg.hex, false);
+      };
     }
   }
 
@@ -1388,7 +1409,14 @@ export class GameRuntime {
         this.physics.addCar(1, 'default');
       }
       if (this.networkHUD) {
+        this.networkHUD.setSession(this.networkReconciler, channel);
         this.networkHUD.setHeadlessClient(null, null);
+      }
+      if (channel) {
+        channel.onColorChange = (msg) => {
+          const cIdx = msg.carIndex ?? 1;
+          this.setCarColor(cIdx, msg.hex, false);
+        };
       }
     }
   }

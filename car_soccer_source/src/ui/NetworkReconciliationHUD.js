@@ -42,6 +42,15 @@ export class NetworkReconciliationHUD {
     }
   }
 
+  setSession(reconciler, channel) {
+    this.reconciler = reconciler;
+    this.channel = channel;
+    if (this.reconciler) {
+      this.reconciler.onMetricsUpdated = (m) => this.update(m);
+    }
+    this.syncLatencyValues();
+  }
+
   setHeadlessClient(headlessClient, coordinator) {
     this.headlessClient = headlessClient;
     this.coordinator = coordinator;

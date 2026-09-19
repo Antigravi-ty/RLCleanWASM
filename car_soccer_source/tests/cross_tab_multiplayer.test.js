@@ -8,7 +8,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 import { ServerSnapshotCodec } from '../src/network/ServerSnapshotCodec.js';
 import { InputPacketCodec } from '../src/network/InputPacketCodec.js';
-import { encodeSignalToken, decodeSignalToken, P2PWebRTCChannel } from '../src/network/P2PWebRTCChannel.js';
+import { encodeSignalToken, decodeSignalToken, P2PWebRTCChannel, sanitizeCandidateIp } from '../src/network/P2PWebRTCChannel.js';
 import { AuthoritativeServer } from '../src/network/AuthoritativeServer.js';
 import { DedicatedServerWorkerClient } from '../src/network/DedicatedServerWorkerClient.js';
 import { PredictionReconciler } from '../src/network/PredictionReconciler.js';
@@ -674,4 +674,105 @@ test('OnlineDialog: Prevents duplicate servers, supports stopHosting(), and sync
   } finally {
     globalThis.document = origDoc;
   }
+});
+
+
+
+test('WebRTC Virtual IP Sanitization: replaces 198.18.x.x and 198.19.x.x with 127.0.0.1', () => {
+  const sdpWithVirtualIps = [
+    'v=0',
+    'o=- 4123456789 2 IN IP4 198.18.0.1',
+    's=-',
+    'c=IN IP4 198.18.0.1',
+    't=0 0',
+    'a=candidate:1 1 UDP 2122260223 198.18.0.1 54321 typ host',
+    'a=candidate:2 1 UDP 2122260223 198.19.45.12 54322 typ host',
+    'a=candidate:3 1 UDP 2122260223 192.168.1.100 54323 typ host'
+  ].join(String.fromCharCode(13, 10));
+
+  const sanitizedSdp = sanitizeCandidateIp(sdpWithVirtualIps);
+
+  assert.ok(!sanitizedSdp.includes('198.18.0.1'), '198.18.0.1 must be sanitized');
+  assert.ok(!sanitizedSdp.includes('198.19.45.12'), '198.19.45.12 must be sanitized');
+  assert.ok(sanitizedSdp.includes('192.168.1.100'), 'Standard LAN IP 192.168.1.100 must be preserved');
+  assert.ok(sanitizedSdp.includes('127.0.0.1'), 'Must contain replaced loopback 127.0.0.1');
+
+  const candidateObj = {
+    candidate: 'candidate:1 1 UDP 2122260223 198.18.1.5 59000 typ host',
+    sdpMid: '0',
+    sdpMLineIndex: 0,
+    address: '198.18.1.5',
+    ip: '198.18.1.5'
+  };
+
+  const sanitizedCand = sanitizeCandidateIp(candidateObj);
+  assert.equal(sanitizedCand.address, '127.0.0.1');
+  assert.equal(sanitizedCand.ip, '127.0.0.1');
+  assert.ok(sanitizedCand.candidate.includes('127.0.0.1'));
+  assert.ok(!sanitizedCand.candidate.includes('198.18.1.5'));
+});
+
+test('Client Latency Simulation & Packet Loss in P2PWebRTCChannel', () => {
+  const channel = new P2PWebRTCChannel({
+    role: 'client',
+    extraLatencyMs: 40,
+    jitterMs: 0
+  });
+
+  assert.equal(channel.extraLatencyMs, 40);
+  assert.equal(channel.latencyMs, 40);
+  assert.equal(channel.rttMs, 80);
+
+  // Test Packet Burst Drop
+  channel.forceDropNextInput(3);
+  assert.equal(channel.packetsToDrop, 3);
+  assert.equal(channel.dropNextPacket, true);
+
+  const testPacket = { tick: 100, controls: { throttle: 1, steer: 0 } };
+  
+  // First 3 packets must be dropped
+  const r1 = channel.sendClientInput(testPacket);
+  assert.equal(r1, false);
+  assert.equal(channel.stats.packetsDropped, 1);
+
+  const r2 = channel.sendClientInput(testPacket);
+  assert.equal(r2, false);
+  assert.equal(channel.stats.packetsDropped, 2);
+
+  const r3 = channel.sendClientInput(testPacket);
+  assert.equal(r3, false);
+  assert.equal(channel.stats.packetsDropped, 3);
+
+  // After 3 drops, drop state is cleared
+  assert.equal(channel.packetsToDrop, 0);
+
+  // Test Packet Loss Rate setting
+  channel.setPacketLossRate(0.15);
+  assert.equal(channel.packetLossRate, 0.15);
+
+  channel.setPacketLossRate(1.5);
+  assert.equal(channel.packetLossRate, 1.0);
+  channel.setPacketLossRate(0.0);
+  channel.destroy();
+});
+
+test('NetworkReconciliationHUD: setSession dynamically updates active channel and latency values', () => {
+  const mockReconciler = {
+    metrics: { clientTick: 100, serverTick: 96, leadTicks: 4 },
+    calculateLeadTicks: () => 4
+  };
+  const mockChannel = {
+    rttMs: 60,
+    measuredRttMs: 20,
+    setPacketLossRate: () => {},
+    forceDropNextInput: () => {}
+  };
+
+  const hud = new NetworkReconciliationHUD(null, null, null);
+  assert.equal(hud.channel, null);
+  assert.equal(hud.reconciler, null);
+
+  hud.setSession(mockReconciler, mockChannel);
+  assert.equal(hud.channel, mockChannel);
+  assert.equal(hud.reconciler, mockReconciler);
 });
