@@ -426,6 +426,12 @@ export class GameRuntime {
           this.enableNetworkPrediction(true);
         }
       },
+      onOpenChange: (isOpen) => {
+        this.handleOverlayChange("online", isOpen);
+      },
+      onColorSelect: (carIndex, slotId, hex) => {
+        this.setCarColor(carIndex, hex);
+      },
       onClose: () => {
         this.isCursorBrowsing = false;
       }
@@ -1214,6 +1220,17 @@ export class GameRuntime {
   }
 
   /**
+   * Sets vehicle paint color by carIndex (0: Host, 1: Opponent/Client)
+   * @param {number} carIndex
+   * @param {string|number} colorVal
+   */
+  setCarColor(carIndex, colorVal) {
+    if (this.arena?.setCarColor) {
+      this.arena.setCarColor(carIndex, colorVal);
+    }
+  }
+
+  /**
    * Host an online multiplayer room using a dedicated 120Hz server Web Worker
    * @param {object} [options]
    * @param {string} [options.playerName='Host']
@@ -1685,6 +1702,7 @@ export class GameRuntime {
       if (name !== 'settings' && this.settingsSheet) this.settingsSheet.hide();
       if (name !== 'car' && this.garageDialog) this.garageDialog.hide();
       if (name !== 'match' && this.matchDialog) this.matchDialog.hide();
+      if (name !== 'online' && this.onlineDialog && this.onlineDialog.isOpen) this.onlineDialog.close();
       if (name !== 'status' && this.overlayHUD) this.overlayHUD.hideDetails(false);
     } else {
       this.openOverlays.delete(name);
@@ -1825,7 +1843,7 @@ export class GameRuntime {
           evt.pointerType !== 'mouse' ||
           !(evt.target instanceof Element) ||
           evt.target.closest(
-            '#settings-button, #car-button, #match-button'
+            '#settings-button, #car-button, #match-button, #online-button, .online-tab-btn, .online-overlay, .online-modal, .net-hud, .hud-tools'
           )
         ) {
           this.isCursorBrowsing = true;

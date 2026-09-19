@@ -251,9 +251,9 @@ export class PredictionReconciler {
       }
 
       const rollbackDepth = currentClientTick - serverTick;
-      if (rollbackDepth > 120) {
-        console.warn(`[PredictionReconciler] Excessive rollback depth (${rollbackDepth} ticks > 120). Snapping state to prevent CPU stall.`);
-        this.sim.restoreState(packet.stateSnapshot);
+      if (!this.isTimelineSynchronized || Math.abs(rollbackDepth) > 120) {
+        console.log(`[PredictionReconciler] Timeline sync aligned (depth: ${rollbackDepth} ticks). Snapping timeline to server tick ${serverTick}.`);
+        this.syncTimeline(packet.stateSnapshot, serverTick, nowMs);
         continue;
       }
 
