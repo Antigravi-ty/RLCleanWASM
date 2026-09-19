@@ -227,6 +227,15 @@ self.onmessage = async (event) => {
           server.sim.restoreState(arr);
           const snap = server.sim.saveState();
           const tick = Math.floor(server.sim.getHeaderView().tickCount);
+          server.lastProcessedTick = tick;
+          server.clientInputBuffer.clear();
+          server.lastReceivedControls.clear();
+          server.clientLastTimestamps.clear();
+          server.furthestReceivedTick.clear();
+          server.lockedGaps.clear();
+          for (let c = 0; c < 6; c++) {
+            server.lastReceivedControls.set(c, { ...server.neutralControls });
+          }
           self.postMessage({
             type: 'restoreState_done',
             reqId,

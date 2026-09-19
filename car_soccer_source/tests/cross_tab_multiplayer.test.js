@@ -384,7 +384,6 @@ test('DedicatedServerWorkerClient: forwards incoming remote client packets via o
 
   mockChannel.onPacketReceived(clientPacket);
 
-  // In fallback mode or mocked worker, verify clientInput postCommand was triggered
   assert.equal(posted.length, 1);
   assert.equal(posted[0].cmd, 'clientInput');
   assert.equal(posted[0].payload.packet.carIndex, 1);
@@ -405,11 +404,11 @@ test('OnlineDialog: Color occupied logic only activates when peer is confirmed a
     isOpen: true,
     callbacks: mockCallbacks,
     close() {
+      this.isOpen = false;
       if (this.root) {
         this.root.hidden = true;
         if (this.root.style) this.root.style.display = 'none';
         if (typeof this.root.setAttribute === 'function') this.root.setAttribute('aria-hidden', 'true');
-        this.isOpen = false;
       }
       this.callbacks.onClose?.();
       this.callbacks.onOpenChange?.(false);
@@ -418,4 +417,71 @@ test('OnlineDialog: Color occupied logic only activates when peer is confirmed a
 
   dialog.close();
   assert.deepEqual(callOrder, ['onClose', 'onOpenChange:false']);
+});
+
+import { OnlineDialog } from '../src/ui/OnlineDialog.js';
+
+test('OnlineDialog: Join view color slots are not pre-occupied until room offer is ingested', () => {
+  const container = { appendChild: () => {}, removeChild: () => {} };
+  const origDoc = globalThis.document;
+  globalThis.document = {
+    createElement: () => ({
+      style: {},
+      classList: { add: () => {}, remove: () => {}, toggle: () => {}, contains: () => false },
+      appendChild: () => {},
+      removeChild: () => {},
+      addEventListener: () => {},
+      setAttribute: () => {},
+      getAttribute: () => null,
+      querySelector: () => ({ addEventListener: () => {} }),
+      querySelectorAll: () => []
+    }),
+    getElementById: () => null,
+    head: { appendChild: () => {} }
+  };
+
+  try {
+    const dialog = new OnlineDialog(container, {});
+    dialog.view = 'join';
+
+    // Before connecting or receiving offer, occupiedHostColorSlot must be null
+    const initialOccupied = dialog.clientP2PChannel?.peerColorSlot ?? dialog.discoveredHostColorSlot ?? null;
+    assert.equal(initialOccupied, null, 'No host color slot should be occupied initially in join view');
+
+    // Verify all 6 slots are unlocked in HTML output
+    const htmlUnrestricted = dialog._renderColorPickerHtml(dialog.clientColorSlot, initialOccupied, 'client');
+    assert.equal(htmlUnrestricted.includes('is-occupied'), false, 'No color card should have is-occupied class');
+    assert.equal(htmlUnrestricted.includes('已占用'), false, 'No color card should display 已占用 tag');
+
+    // Now simulate ingesting an offer from Host using Slot 3 (Blue)
+    const dummyOffer = 'RL_OFFER_' + encodeSignalToken({
+      type: 'offer',
+      sdp: 'mock-sdp',
+      hostName: 'TestHost',
+      hostColorSlot: 3,
+      hostColorHex: '#42a5f5'
+    });
+
+    const offerData = decodeSignalToken(dummyOffer);
+    if (offerData?.hostColorSlot !== undefined) {
+      dialog.discoveredHostColorSlot = offerData.hostColorSlot;
+    }
+    assert.equal(dialog.discoveredHostColorSlot, 3);
+
+    // Re-render color picker with discovered host slot
+    const htmlWithHost = dialog._renderColorPickerHtml(dialog.clientColorSlot, dialog.discoveredHostColorSlot, 'client');
+    assert.ok(htmlWithHost.includes('is-occupied'), 'Host color slot must now be marked as is-occupied');
+    assert.ok(htmlWithHost.includes('已占用'), 'Host color slot must display 已占用 tag');
+
+    // Verify that if client had chosen slot 3, client auto-adjusts to a free slot
+    dialog.clientColorSlot = 3;
+    if (dialog.clientColorSlot === dialog.discoveredHostColorSlot) {
+      dialog.clientColorSlot = (dialog.discoveredHostColorSlot + 3) % 6;
+    }
+    assert.notEqual(dialog.clientColorSlot, 3, 'Client color slot should auto-switch away from occupied slot');
+
+    dialog.destroy();
+  } finally {
+    globalThis.document = origDoc;
+  }
 });

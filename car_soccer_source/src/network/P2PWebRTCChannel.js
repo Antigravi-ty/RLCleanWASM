@@ -101,6 +101,19 @@ export class P2PWebRTCChannel {
 
   _handleBroadcastMessage(msg) {
     if (!msg || !msg.type) return;
+    if (msg.senderRole === this.role && msg.senderName === this.playerName) return;
+
+    if (msg.type === 'ice_candidate' && msg.candidate) {
+      if (this.pc && this.pc.remoteDescription) {
+        try {
+          this.pc.addIceCandidate(new RTCIceCandidate(msg.candidate)).catch(() => {});
+        } catch (_) {}
+      } else {
+        if (!this.pendingRemoteCandidates) this.pendingRemoteCandidates = [];
+        this.pendingRemoteCandidates.push(msg.candidate);
+      }
+    }
+
     if (this.onBroadcastSignal) {
       this.onBroadcastSignal(msg);
     }
@@ -180,21 +193,23 @@ export class P2PWebRTCChannel {
       }
     };
 
-    this.pc.oniceconnectionstatechange = () => {
-      console.log(`[P2PWebRTCChannel] ICE Connection State: ${this.pc.iceConnectionState}`);
-      if (this.pc.iceConnectionState === 'disconnected' || this.pc.iceConnectionState === 'failed') {
-        this.isOpen = false;
-        this.onDisconnected?.();
-      }
-    };
-
     this.pc.onconnectionstatechange = () => {
       console.log(`[P2PWebRTCChannel] Connection State: ${this.pc.connectionState}`);
       if (this.pc.connectionState === 'connected') {
         this.isOpen = true;
-      } else if (this.pc.connectionState === 'disconnected' || this.pc.connectionState === 'failed') {
+      } else if (this.pc.connectionState === 'failed') {
+        const wasOpen = this.isOpen;
         this.isOpen = false;
-        this.onDisconnected?.();
+        if (wasOpen) this.onDisconnected?.();
+      }
+    };
+
+    this.pc.oniceconnectionstatechange = () => {
+      console.log(`[P2PWebRTCChannel] ICE Connection State: ${this.pc.iceConnectionState}`);
+      if (this.pc.iceConnectionState === 'failed') {
+        const wasOpen = this.isOpen;
+        this.isOpen = false;
+        if (wasOpen) this.onDisconnected?.();
       }
     };
 
@@ -322,6 +337,12 @@ export class P2PWebRTCChannel {
         await this.addRemoteCandidate(cand);
       }
     }
+    if (this.pendingRemoteCandidates && this.pendingRemoteCandidates.length > 0) {
+      for (const cand of this.pendingRemoteCandidates) {
+        try { await this.pc.addIceCandidate(new RTCIceCandidate(cand)); } catch (_) {}
+      }
+      this.pendingRemoteCandidates = [];
+    }
 
     const answer = await this.pc.createAnswer();
     await this.pc.setLocalDescription(answer);
@@ -382,6 +403,12 @@ export class P2PWebRTCChannel {
       for (const cand of answerData.candidates) {
         await this.addRemoteCandidate(cand);
       }
+    }
+    if (this.pendingRemoteCandidates && this.pendingRemoteCandidates.length > 0) {
+      for (const cand of this.pendingRemoteCandidates) {
+        try { await this.pc.addIceCandidate(new RTCIceCandidate(cand)); } catch (_) {}
+      }
+      this.pendingRemoteCandidates = [];
     }
   }
 

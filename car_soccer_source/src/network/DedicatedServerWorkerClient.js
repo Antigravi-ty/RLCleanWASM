@@ -51,8 +51,15 @@ export class DedicatedServerWorkerClient {
         if (state) {
           if (state instanceof Float32Array) {
             this.cachedSnapshot.set(state);
+            if (!Number.isNaN(state[0])) {
+              this.lastServerTick = Math.floor(state[0]);
+            }
           } else {
-            this.cachedSnapshot.set(new Float32Array(state));
+            const arr = new Float32Array(state);
+            this.cachedSnapshot.set(arr);
+            if (!Number.isNaN(arr[0])) {
+              this.lastServerTick = Math.floor(arr[0]);
+            }
           }
         }
         if (this.isWorker) {
@@ -64,7 +71,9 @@ export class DedicatedServerWorkerClient {
             return this.cachedSnapshot;
           });
         } else if (this.fallbackServer?.sim) {
-          return this.fallbackServer.sim.restoreState(state);
+          const res = this.fallbackServer.sim.restoreState(state);
+          this.lastServerTick = Math.floor(this.fallbackServer.sim.getHeaderView().tickCount);
+          return res;
         }
       },
       saveState: (targetBuf) => {
@@ -139,18 +148,21 @@ export class DedicatedServerWorkerClient {
     if (!channel || channel.__boundWorkerClient === this) return;
     channel.__boundWorkerClient = this;
 
-    const origSend = channel.sendClientInput.bind(channel);
-    channel.sendClientInput = (packet, nowMs = performance.now()) => {
-      const sent = origSend(packet, nowMs);
-      if (sent && this.isWorker && this.worker) {
-        this._postCommand('clientInput', { channelId, packet });
-      }
-      return sent;
-    };
+    const origSend = channel.sendClientInput ? channel.sendClientInput.bind(channel) : null;
+    if (origSend) {
+      channel.sendClientInput = (packet, nowMs = performance.now()) => {
+        const sent = origSend(packet, nowMs);
+        if (sent && this.isWorker && this.worker) {
+          this._postCommand('clientInput', { channelId, packet });
+        }
+        return sent;
+      };
+    }
 
-    const prevOnPacket = channel.onPacketReceived;
+    // Forward remote peer input packets arriving over the channel to the worker
+    const origPacketReceived = channel.onPacketReceived;
     channel.onPacketReceived = (packet) => {
-      prevOnPacket?.(packet);
+      origPacketReceived?.(packet);
       if (this.isWorker && this.worker && packet) {
         this._postCommand('clientInput', { channelId, packet });
       }
@@ -335,7 +347,7 @@ export class DedicatedServerWorkerClient {
       for (const [ch, channelId] of this.channelMap.entries()) {
         if (typeof ch.receiveServerPackets === 'function') {
           const packets = ch.receiveServerPackets(nowMs);
-          if (Array.isArray(packets)) {
+          if (Array.isArray(packets) && packets.length > 0) {
             for (const packet of packets) {
               this._postCommand('clientInput', { channelId, packet });
             }
@@ -351,7 +363,9 @@ export class DedicatedServerWorkerClient {
     this.active = false;
     if (this.isWorker && this.worker) {
       this._postCommand('destroy', {});
-      try { this.worker?.terminate?.(); } catch (_) {}
+      try {
+        if (typeof this.worker?.terminate === 'function') this.worker.terminate();
+      } catch (_) {}
       this.worker = null;
     } else if (this.fallbackServer) {
       this.fallbackServer.destroy();

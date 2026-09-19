@@ -1264,7 +1264,7 @@ export class GameRuntime {
     await this.authoritativeServer.init();
 
     this.authoritativeServer.sim.setUnlimitedBoost(this.physics.isUnlimitedBoost);
-    await this.authoritativeServer.sim.restoreState(initialSnapshot);
+    await Promise.resolve(this.authoritativeServer.sim.restoreState(initialSnapshot));
 
     const serverSnap = this.authoritativeServer.sim.saveState();
     const serverTick = Math.floor(this.authoritativeServer.sim.getHeaderView().tickCount);

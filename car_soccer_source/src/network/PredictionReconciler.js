@@ -233,6 +233,10 @@ export class PredictionReconciler {
       const targetDelta = this.leadTicks + oneWayTicks;
       const currentDelta = currentClientTick - serverTick;
 
+      // On local loopback / zero-RTT channels, allow wider tolerance to prevent false pause locks
+      const isLocalChannel = (this.channel?.rttMs ?? 80) <= 2;
+      const skipThreshold = isLocalChannel ? targetDelta + 16 : targetDelta + 8;
+
       if (currentDelta < targetDelta - 3) {
         // Slow: multi-step fast-forward (glitch catch-up)
         const catchUpTicks = Math.min(targetDelta - currentDelta, 12);
@@ -243,7 +247,7 @@ export class PredictionReconciler {
         }
         currentClientTick = Math.floor(this.sim.getHeaderView().tickCount);
         this.shouldSkipLocalStep = false;
-      } else if (currentDelta > targetDelta + 4) {
+      } else if (currentDelta > skipThreshold) {
         // Fast: wait/pause next local physics step to let authoritative server catch up
         this.shouldSkipLocalStep = true;
       } else {

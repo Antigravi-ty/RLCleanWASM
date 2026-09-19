@@ -266,7 +266,8 @@ test('AuthoritativeServer: anti-cheat gap sealing and immutable past input defen
   assert.equal(server.clientInputBuffer.get(4)?.has(0), undefined, 'Retroactive injection into sealed gap must be blocked');
 
   // 3. Step server until tick 4 (omitted gap) is simulated
-  while (Math.floor(server.sim.getHeaderView().tickCount) <= 4) {
+  let safetyLimit = 100;
+  while (Math.floor(server.sim.getHeaderView().tickCount) <= 4 && safetyLimit-- > 0) {
     server.tick(1000.0);
   }
   // Authoritative step for tick 4: dead reckon must execute tick 3 input (throttle 0.5)

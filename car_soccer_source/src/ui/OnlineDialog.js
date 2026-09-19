@@ -50,6 +50,7 @@ export class OnlineDialog {
     this.offerToken = '';
     this.answerToken = '';
     this.detectedLocalHost = null;
+    this.discoveredHostColorSlot = null;
     this.discoveryHeartbeat = null;
     this.currentError = null;
 
@@ -86,7 +87,18 @@ export class OnlineDialog {
 
           if (data.type === 'host_available') {
             this.detectedLocalHost = data;
+            if (data.colorSlot !== undefined) {
+              this.discoveredHostColorSlot = data.colorSlot;
+              if (this.clientColorSlot === this.discoveredHostColorSlot) {
+                this.clientColorSlot = (this.discoveredHostColorSlot + 3) % 6;
+                this.clientColorHex = CAR_COLOR_SLOTS[this.clientColorSlot].hex;
+                this.callbacks.onColorSelect?.(1, this.clientColorSlot, this.clientColorHex);
+              }
+            }
             this._renderLocalHostNotice();
+            if (this.view === 'join') {
+              this._renderJoinView();
+            }
           } else if (data.type === 'query_host' && this.view === 'host' && this.offerToken) {
             // Reply with host availability
             this.discoveryChannel.postMessage({
@@ -127,6 +139,9 @@ export class OnlineDialog {
         const data = JSON.parse(raw);
         if (data && Date.now() - (data.timestamp || 0) < 10000) {
           this.detectedLocalHost = data;
+          if (data.colorSlot !== undefined) {
+            this.discoveredHostColorSlot = data.colorSlot;
+          }
         }
       }
     } catch (_) {}
@@ -535,7 +550,7 @@ export class OnlineDialog {
       btnClose: overlay.querySelector('[data-el="btnClose"]')
     };
 
-    this.dom.btnClose.addEventListener('click', () => this.close());
+    this.dom.btnClose?.addEventListener('click', () => this.close());
   }
 
   open(view = 'lobby') {
@@ -560,11 +575,11 @@ export class OnlineDialog {
   }
 
   close() {
+    this.isOpen = false;
     if (this.root) {
       this.root.hidden = true;
       if (this.root.style) this.root.style.display = 'none';
       if (typeof this.root.setAttribute === 'function') this.root.setAttribute('aria-hidden', 'true');
-      this.isOpen = false;
     }
     this.callbacks.onClose?.();
     this.callbacks.onOpenChange?.(false);
@@ -1047,9 +1062,9 @@ export class OnlineDialog {
     this.dom.badge.style.color = '#58a6ff';
 
     const isConnected = this.clientP2PChannel?.isOpen;
-    const hasHostColor = isConnected || (this.clientP2PChannel?.peerColorSlot !== undefined && this.clientP2PChannel?.peerColorSlot !== null);
-    const hostColorSlot = hasHostColor ? this.clientP2PChannel.peerColorSlot : null;
-    const hostColor = hostColorSlot !== null ? getCarColorSlotById(hostColorSlot) : null;
+    // Only mark host color as occupied IF host has connected, broadcasted, or offer token was ingested
+    const occupiedHostColorSlot = this.clientP2PChannel?.peerColorSlot ?? this.discoveredHostColorSlot ?? null;
+    const hostColor = occupiedHostColorSlot !== null ? getCarColorSlotById(occupiedHostColorSlot) : null;
     const myColor = getCarColorSlotById(this.clientColorSlot);
 
     this.dom.content.innerHTML = `
@@ -1078,18 +1093,18 @@ export class OnlineDialog {
         <div style="background:rgba(56,139,253,0.1);border:1px solid rgba(56,139,253,0.3);padding:10px;border-radius:6px;">
           <div style="display:flex;align-items:center;justify-content:space-between;">
             <div style="font-size:10px;font-weight:700;color:#58a6ff;text-transform:uppercase;">Host (Car 0)</div>
-            <div style="width:12px;height:12px;border-radius:50%;background:${hostColor ? hostColor.hex : '#58a6ff'};border:1px solid #fff;"></div>
+            ${hostColor ? `<div style="width:12px;height:12px;border-radius:50%;background:${hostColor.hex};border:1px solid #fff;"></div>` : ''}
           </div>
           <div style="font-size:14px;font-weight:700;color:#ffffff;margin-top:2px;">
-            ${this.clientP2PChannel?.peerName || this.detectedLocalHost?.hostName || 'Host'}
+            ${this.clientP2PChannel?.peerName || this.detectedLocalHost?.hostName || 'Standby for Host...'}
           </div>
           <div style="font-size:11px;color:${isConnected ? '#3fb950' : '#8b949e'};margin-top:2px;">
-            ${isConnected ? '● Synchronized at 120Hz' : '○ Standby for Handshake'}
+            ${isConnected ? '● Synchronized at 120Hz' : (occupiedHostColorSlot !== null ? '○ Offer Ingested' : '○ Standby for Handshake')}
           </div>
         </div>
       </div>
 
-      ${this._renderColorPickerHtml(this.clientColorSlot, hostColorSlot, 'client')}
+      ${this._renderColorPickerHtml(this.clientColorSlot, occupiedHostColorSlot, 'client')}
 
       ${isConnected ? `
         <div class="online-status-banner online-status-banner--success">
@@ -1137,6 +1152,29 @@ export class OnlineDialog {
       this.render();
     });
 
+    const txtOffer = this.dom.content.querySelector('[data-el="txtOfferInput"]');
+    if (txtOffer) {
+      const onOfferChanged = () => {
+        const val = txtOffer.value?.trim();
+        if (val && val.startsWith('RL_OFFER_')) {
+          try {
+            const data = decodeSignalToken(val);
+            if (data && data.hostColorSlot !== undefined && this.discoveredHostColorSlot !== data.hostColorSlot) {
+              this.discoveredHostColorSlot = data.hostColorSlot;
+              if (this.clientColorSlot === this.discoveredHostColorSlot) {
+                this.clientColorSlot = (this.discoveredHostColorSlot + 3) % 6;
+                this.clientColorHex = CAR_COLOR_SLOTS[this.clientColorSlot].hex;
+                this.callbacks.onColorSelect?.(1, this.clientColorSlot, this.clientColorHex);
+              }
+              this._renderJoinView();
+            }
+          } catch (_) {}
+        }
+      };
+      txtOffer.addEventListener('input', onOfferChanged);
+      txtOffer.addEventListener('paste', () => setTimeout(onOfferChanged, 50));
+    }
+
     this.dom.content.querySelector('[data-el="btnGenerateAnswer"]')?.addEventListener('click', () => {
       this._handleGenerateAnswer();
     });
@@ -1170,6 +1208,18 @@ export class OnlineDialog {
     }
 
     try {
+      try {
+        const offerData = decodeSignalToken(offer);
+        if (offerData && offerData.hostColorSlot !== undefined) {
+          this.discoveredHostColorSlot = offerData.hostColorSlot;
+          if (this.clientColorSlot === this.discoveredHostColorSlot) {
+            this.clientColorSlot = (this.discoveredHostColorSlot + 3) % 6;
+            this.clientColorHex = CAR_COLOR_SLOTS[this.clientColorSlot].hex;
+            this.callbacks.onColorSelect?.(1, this.clientColorSlot, this.clientColorHex);
+          }
+        }
+      } catch (_) {}
+
       this.clientP2PChannel = new P2PWebRTCChannel({
         role: 'client',
         playerName: this.playerName,
