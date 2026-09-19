@@ -3,14 +3,17 @@
  * Comprehensive WebRTC Multiplayer Dialog & Host Room Control Panel.
  * 
  * Flow:
- * - Lobby view: Edit Player Name (or random UUID), choose "Host a Server" or "Join a Server".
- * - "Host a Server": Spawns dedicated 120Hz Web Worker on-demand, connects host locally (0ms extra latency),
- *   opens Host Room Control Panel with Step-by-Step manual signaling token copy/paste and BroadcastChannel auto-discovery.
- * - "Join a Server": Ingests Host Offer Token, generates Answer Token, guides user through copy/paste handshake.
- * - Live connection status, 1-click token copying, peer connection confirmation, and network controller launcher.
+ * - Lobby view: Edit Player Name, view nearby hosts, choose "Host a Server" or "Join a Server".
+ * - "Host a Server": Spawns dedicated 120Hz Web Worker on-demand, connects host locally (0ms latency),
+ *   opens Host Room Control Panel with 6-color palette picker (occupied slot locking),
+ *   step-by-step token copy/paste, and persistent cross-tab auto-discovery.
+ * - "Join a Server": Ingests Host Offer Token, selects available team color, generates Answer Token,
+ *   supports 1-click nearby auto-join and manual copy/paste handshake.
+ * - Non-blocking copyable error cards (zero blocking alerts), live 120Hz status confirmations.
  */
 
 import { P2PWebRTCChannel, encodeSignalToken, decodeSignalToken } from '../network/P2PWebRTCChannel.js';
+import { CAR_COLOR_SLOTS, getCarColorSlotById } from '../entities/CarColorConstants.js';
 
 export class OnlineDialog {
   /**
@@ -18,8 +21,11 @@ export class OnlineDialog {
    * @param {object} callbacks
    * @param {(opts: { playerName: string }) => Promise<void>} callbacks.onHostServer
    * @param {(opts: { channel: P2PWebRTCChannel, playerName: string, remotePlayerName: string }) => Promise<void>} callbacks.onJoinServer
+   * @param {(channel: P2PWebRTCChannel, remotePlayerName: string) => Promise<void>} callbacks.onPeerConnected
    * @param {() => void} callbacks.onOpenNetworkHUD
+   * @param {(isOpen: boolean) => void} [callbacks.onOpenChange]
    * @param {() => void} [callbacks.onClose]
+   * @param {(carIndex: number, slotId: number, hex: string) => void} [callbacks.onColorSelect]
    */
   constructor(container, callbacks = {}) {
     this.container = container;
@@ -29,6 +35,14 @@ export class OnlineDialog {
     this.view = 'lobby'; // 'lobby' | 'host' | 'join'
     this.playerName = this._loadPlayerName();
 
+    // Active color slots
+    // Host defaults to Slot 3 (Blue #42a5f5, Team Blue)
+    // Client defaults to Slot 0 (Red #ff7043, Team Orange/Red)
+    this.hostColorSlot = 3;
+    this.hostColorHex = CAR_COLOR_SLOTS[3].hex;
+    this.clientColorSlot = 0;
+    this.clientColorHex = CAR_COLOR_SLOTS[0].hex;
+
     // Active channels
     this.hostP2PChannel = null;
     this.clientP2PChannel = null;
@@ -36,6 +50,8 @@ export class OnlineDialog {
     this.offerToken = '';
     this.answerToken = '';
     this.detectedLocalHost = null;
+    this.discoveryHeartbeat = null;
+    this.currentError = null;
 
     this.root = null;
     this.dom = {};
@@ -66,13 +82,54 @@ export class OnlineDialog {
         this.discoveryChannel = new BroadcastChannel('car_soccer_online_discovery');
         this.discoveryChannel.onmessage = (e) => {
           const data = e.data;
-          if (data?.type === 'host_available') {
+          if (!data) return;
+
+          if (data.type === 'host_available') {
             this.detectedLocalHost = data;
             this._renderLocalHostNotice();
+          } else if (data.type === 'query_host' && this.view === 'host' && this.offerToken) {
+            // Reply with host availability
+            this.discoveryChannel.postMessage({
+              type: 'host_available',
+              hostName: this.playerName,
+              token: this.offerToken,
+              colorSlot: this.hostColorSlot,
+              colorHex: this.hostColorHex,
+              timestamp: Date.now()
+            });
+          } else if (data.type === 'room_answer' && this.view === 'host' && this.hostP2PChannel) {
+            // Auto-accept room answer if token matches
+            if (data.answerToken && !this.hostP2PChannel.isOpen && this.hostP2PChannel.pc?.signalingState !== 'stable') {
+              console.log('[OnlineDialog] Received auto-discovered room_answer via BroadcastChannel');
+              this.hostP2PChannel.acceptAnswerToken(data.answerToken).catch(err => {
+                console.warn('[OnlineDialog] Auto-accept answer failed:', err);
+              });
+            }
+          } else if (data.type === 'host_closed') {
+            if (this.detectedLocalHost?.hostName === data.hostName) {
+              this.detectedLocalHost = null;
+              this._renderLocalHostNotice();
+            }
           }
         };
       } catch (_) {}
     }
+
+    // Check localStorage active room on initialization
+    this._checkLocalStorageRoom();
+  }
+
+  _checkLocalStorageRoom() {
+    if (typeof localStorage === 'undefined') return;
+    try {
+      const raw = localStorage.getItem('car_soccer_active_host');
+      if (raw) {
+        const data = JSON.parse(raw);
+        if (data && Date.now() - (data.timestamp || 0) < 10000) {
+          this.detectedLocalHost = data;
+        }
+      }
+    } catch (_) {}
   }
 
   initDOM() {
@@ -92,14 +149,17 @@ export class OnlineDialog {
           align-items: center;
           justify-content: center;
           padding: 20px;
-          user-select: none;
+          user-select: auto;
+        }
+        .online-overlay[hidden] {
+          display: none !important;
         }
         .online-modal {
           background: rgba(13, 17, 23, 0.96);
           border: 1px solid rgba(88, 166, 255, 0.35);
           border-radius: 12px;
           box-shadow: 0 24px 64px rgba(0, 0, 0, 0.8), 0 0 24px rgba(88, 166, 255, 0.15);
-          width: 580px;
+          width: 600px;
           max-width: 95vw;
           max-height: 90vh;
           overflow-y: auto;
@@ -139,11 +199,12 @@ export class OnlineDialog {
           background: transparent;
           border: none;
           color: #8b949e;
-          font-size: 18px;
+          font-size: 20px;
           cursor: pointer;
           padding: 4px 8px;
-          border-radius: 4px;
+          border-radius: 6px;
           line-height: 1;
+          transition: background 0.15s, color 0.15s;
         }
         .online-close-btn:hover {
           background: rgba(255, 255, 255, 0.1);
@@ -153,210 +214,278 @@ export class OnlineDialog {
           padding: 20px;
           display: flex;
           flex-direction: column;
-          gap: 18px;
+          gap: 16px;
         }
-        .online-card-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 14px;
-        }
-        .online-mode-card {
-          background: rgba(22, 27, 34, 0.6);
-          border: 1px solid rgba(255, 255, 255, 0.12);
-          border-radius: 8px;
-          padding: 16px;
-          display: flex;
-          flex-direction: column;
-          gap: 10px;
+        .online-btn {
+          padding: 10px 16px;
+          border-radius: 6px;
+          font-size: 13px;
+          font-weight: 600;
           cursor: pointer;
-          transition: transform 0.15s, border-color 0.15s, background 0.15s;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          border: 1px solid transparent;
+          transition: all 0.15s ease-in-out;
+          text-decoration: none;
         }
-        .online-mode-card:hover {
-          transform: translateY(-2px);
-          border-color: #58a6ff;
-          background: rgba(88, 166, 255, 0.08);
+        .online-btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed !important;
         }
-        .online-mode-card--accent:hover {
-          border-color: #a371f7;
-          background: rgba(163, 113, 247, 0.08);
+        .online-btn--blue {
+          background: #238636;
+          color: #ffffff;
+          border-color: rgba(255, 255, 255, 0.1);
         }
-        .online-card-icon {
-          font-size: 24px;
+        .online-btn--blue:hover:not(:disabled) {
+          background: #2ea043;
         }
-        .online-card-title {
-          font-size: 15px;
-          font-weight: 700;
+        .online-btn--purple {
+          background: #8957e5;
+          color: #ffffff;
+          border-color: rgba(255, 255, 255, 0.1);
+        }
+        .online-btn--purple:hover:not(:disabled) {
+          background: #9e6a03;
+        }
+        .online-btn--secondary {
+          background: rgba(255, 255, 255, 0.08);
+          color: #c9d1d9;
+          border-color: rgba(255, 255, 255, 0.15);
+        }
+        .online-btn--secondary:hover:not(:disabled) {
+          background: rgba(255, 255, 255, 0.14);
           color: #ffffff;
         }
-        .online-card-desc {
-          font-size: 12px;
-          color: #8b949e;
-          line-height: 1.4;
+        .online-input {
+          background: rgba(1, 4, 9, 0.8);
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          border-radius: 6px;
+          padding: 8px 12px;
+          color: #ffffff;
+          font-size: 13px;
+          outline: none;
+          transition: border-color 0.15s;
+          font-family: inherit;
+        }
+        .online-input:focus {
+          border-color: #58a6ff;
+        }
+        .online-textarea {
+          background: rgba(1, 4, 9, 0.8);
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          border-radius: 6px;
+          padding: 8px 10px;
+          color: #7ee787;
+          font-size: 11px;
+          font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+          resize: none;
+          outline: none;
+          width: 100%;
+          box-sizing: border-box;
+          user-select: text;
+        }
+        .online-textarea:focus {
+          border-color: #58a6ff;
         }
         .online-step-box {
-          background: rgba(22, 27, 34, 0.7);
-          border: 1px solid rgba(255, 255, 255, 0.1);
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid rgba(255, 255, 255, 0.08);
           border-radius: 8px;
-          padding: 14px;
+          padding: 12px;
           display: flex;
           flex-direction: column;
-          gap: 10px;
+          gap: 8px;
         }
         .online-step-header {
           display: flex;
           align-items: center;
           gap: 8px;
-          font-size: 13px;
-          font-weight: 600;
+          font-size: 12px;
+          font-weight: 700;
+          color: #c9d1d9;
         }
         .online-step-num {
-          background: #388bfd;
-          color: #ffffff;
-          width: 20px;
-          height: 20px;
+          background: rgba(88, 166, 255, 0.2);
+          color: #58a6ff;
           border-radius: 50%;
-          display: inline-flex;
+          width: 18px;
+          height: 18px;
+          display: flex;
           align-items: center;
           justify-content: center;
-          font-size: 11px;
-          font-weight: bold;
-        }
-        .online-step-num--green {
-          background: #2ea043;
+          font-size: 10px;
+          font-weight: 800;
         }
         .online-step-num--purple {
-          background: #8957e5;
+          background: rgba(163, 113, 247, 0.2);
+          color: #d2a8ff;
         }
-        .online-textarea {
-          width: 100%;
-          background: #0d1117;
-          border: 1px solid rgba(255, 255, 255, 0.15);
-          border-radius: 6px;
-          color: #58a6ff;
-          font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-          font-size: 11px;
-          padding: 8px;
-          resize: none;
-          box-sizing: border-box;
-        }
-        .online-textarea:focus {
-          outline: 1px solid #58a6ff;
-          border-color: #58a6ff;
-        }
-        .online-input {
-          background: #0d1117;
-          border: 1px solid rgba(255, 255, 255, 0.15);
-          border-radius: 6px;
-          color: #ffffff;
-          padding: 8px 12px;
-          font-size: 13px;
-          width: 100%;
-          box-sizing: border-box;
-        }
-        .online-input:focus {
-          outline: 1px solid #58a6ff;
-        }
-        .online-btn {
-          background: #238636;
-          color: #ffffff;
-          border: none;
-          border-radius: 6px;
-          padding: 8px 16px;
-          font-size: 12px;
-          font-weight: 600;
-          cursor: pointer;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          gap: 6px;
-          transition: background 0.15s;
-        }
-        .online-btn:hover {
-          background: #2ea043;
-        }
-        .online-btn--blue {
-          background: #1f6feb;
-        }
-        .online-btn--blue:hover {
-          background: #388bfd;
-        }
-        .online-btn--purple {
-          background: #8957e5;
-        }
-        .online-btn--purple:hover {
-          background: #a371f7;
-        }
-        .online-btn--secondary {
-          background: #21262d;
-          color: #c9d1d9;
-          border: 1px solid rgba(240, 246, 252, 0.1);
-        }
-        .online-btn--secondary:hover {
-          background: #30363d;
-          color: #ffffff;
-        }
-        .online-btn--danger {
-          background: #da3633;
-        }
-        .online-btn--danger:hover {
-          background: #f85149;
+        .online-step-num--green {
+          background: rgba(63, 185, 80, 0.2);
+          color: #3fb950;
         }
         .online-status-banner {
           padding: 10px 14px;
           border-radius: 6px;
           font-size: 12px;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-        .online-status-banner--info {
-          background: rgba(56, 139, 253, 0.15);
-          border: 1px solid rgba(56, 139, 253, 0.35);
-          color: #79c0ff;
-        }
-        .online-status-banner--success {
-          background: rgba(46, 160, 67, 0.15);
-          border: 1px solid rgba(46, 160, 67, 0.35);
-          color: #56d364;
-        }
-        .online-tab-btn {
-          position: fixed;
-          right: max(24px, var(--safe-right, 24px));
-          bottom: calc(max(26px, var(--safe-bottom, 26px)) + 84px);
-          z-index: 40;
+          font-weight: 600;
           display: flex;
           align-items: center;
           gap: 10px;
-          width: 190px;
-          min-height: 60px;
-          padding: 10px 16px;
-          border: 3px solid #000000;
-          border-radius: 10px;
-          background: #58a6ff;
-          color: #000000;
-          box-shadow: 0 5px 0 #000000;
+        }
+        .online-status-banner--success {
+          background: rgba(46, 160, 67, 0.15);
+          border: 1px solid rgba(46, 160, 67, 0.4);
+          color: #3fb950;
+        }
+        .online-tab-btn {
+          position: fixed;
+          top: 16px;
+          right: 320px;
+          background: linear-gradient(135deg, #1f6feb 0%, #238636 100%);
+          color: #ffffff;
+          border: 1px solid rgba(255, 255, 255, 0.25);
+          box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5), 0 0 12px rgba(31, 111, 235, 0.35);
+          border-radius: 8px;
+          padding: 6px 14px;
           cursor: pointer;
-          transition: transform 0.15s, background 0.15s;
-          font-family: var(--sans, sans-serif);
-          text-align: left;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          z-index: 9990;
+          transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
         }
         .online-tab-btn:hover {
           transform: translateY(-2px);
-          background: #79c0ff;
+          box-shadow: 0 6px 18px rgba(0, 0, 0, 0.6), 0 0 16px rgba(31, 111, 235, 0.5);
         }
-        .online-tab-btn:active {
-          transform: translateY(2px);
+
+        /* Color palette grid & slot cards */
+        .color-palette-title {
+          font-size: 11px;
+          font-weight: 700;
+          color: #8b949e;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          margin-bottom: 6px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+        .color-palette-grid {
+          display: grid;
+          grid-template-columns: repeat(6, 1fr);
+          gap: 6px;
+          margin-top: 4px;
+        }
+        .color-swatch-card {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 6px 4px;
+          border-radius: 8px;
+          background: rgba(255, 255, 255, 0.04);
+          border: 1.5px solid rgba(255, 255, 255, 0.12);
+          cursor: pointer;
+          transition: all 0.15s ease;
+          position: relative;
+          user-select: none;
+        }
+        .color-swatch-card:hover:not(.is-occupied):not(.is-selected) {
+          border-color: rgba(255, 255, 255, 0.45);
+          background: rgba(255, 255, 255, 0.08);
+          transform: translateY(-1px);
+        }
+        .color-swatch-card.is-selected {
+          border-color: #58a6ff;
+          background: rgba(56, 139, 253, 0.18);
+          box-shadow: 0 0 10px rgba(56, 139, 253, 0.4);
+        }
+        .color-swatch-card.is-occupied {
+          opacity: 0.45;
+          cursor: not-allowed;
+          filter: grayscale(0.5);
+        }
+        .color-circle {
+          width: 22px;
+          height: 22px;
+          border-radius: 50%;
+          margin-bottom: 4px;
+          border: 2px solid rgba(255, 255, 255, 0.8);
+          box-shadow: 0 2px 5px rgba(0, 0, 0, 0.6);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 11px;
+          color: #fff;
+          font-weight: 900;
+        }
+        .color-label {
+          font-size: 10px;
+          font-weight: 700;
+          color: #c9d1d9;
+          line-height: 1.2;
+        }
+        .color-team-tag {
+          font-size: 8px;
+          font-weight: 600;
+          opacity: 0.75;
+          margin-top: 2px;
+        }
+        .color-occupied-badge {
+          position: absolute;
+          top: -4px;
+          right: -4px;
+          background: #f85149;
+          color: #fff;
+          font-size: 7px;
+          font-weight: 800;
+          padding: 1px 4px;
+          border-radius: 3px;
+        }
+
+        /* Non-blocking copyable error banner */
+        .online-error-box {
+          background: rgba(248, 81, 73, 0.15);
+          border: 1px solid rgba(248, 81, 73, 0.45);
+          border-radius: 8px;
+          padding: 10px 12px;
+          margin-bottom: 12px;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+        .online-error-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          font-size: 12px;
+          font-weight: 700;
+          color: #f85149;
+        }
+        .online-error-message {
+          font-family: ui-monospace, SFMono-Regular, monospace;
+          font-size: 11px;
+          color: #ffb4a9;
+          word-break: break-word;
+          user-select: text;
+          background: rgba(0, 0, 0, 0.35);
+          padding: 6px 8px;
+          border-radius: 4px;
         }
       `;
       document.head.appendChild(style);
     }
 
-    // Trigger button on main HUD
+    // Floating HUD Trigger Button
     const triggerBtn = document.createElement('button');
     triggerBtn.id = 'online-button';
     triggerBtn.className = 'online-tab-btn';
-    triggerBtn.type = 'button';
-    triggerBtn.setAttribute('aria-label', 'Play Online');
+    triggerBtn.setAttribute('title', 'Play Online (WebRTC) [O]');
     triggerBtn.innerHTML = `
       <div style="font-size:22px;">🌐</div>
       <div>
@@ -374,6 +503,8 @@ export class OnlineDialog {
     overlay.id = 'online-overlay';
     overlay.className = 'online-overlay';
     overlay.hidden = true;
+    overlay.style.display = 'none';
+    overlay.setAttribute('aria-hidden', 'true');
 
     overlay.innerHTML = `
       <div class="online-modal" data-el="modal">
@@ -409,24 +540,46 @@ export class OnlineDialog {
 
   open(view = 'lobby') {
     this.view = view;
+    this.currentError = null;
+    this._checkLocalStorageRoom();
     this.render();
     if (this.root) {
       this.root.hidden = false;
+      if (this.root.style) this.root.style.display = 'flex';
+      if (typeof this.root.setAttribute === 'function') this.root.setAttribute('aria-hidden', 'false');
       this.isOpen = true;
+    }
+    this.callbacks.onOpenChange?.(true);
+
+    // If query host is available, ask nearby hosts to announce
+    if (this.discoveryChannel && this.view !== 'host') {
+      try {
+        this.discoveryChannel.postMessage({ type: 'query_host' });
+      } catch (_) {}
     }
   }
 
   close() {
     if (this.root) {
       this.root.hidden = true;
+      if (this.root.style) this.root.style.display = 'none';
+      if (typeof this.root.setAttribute === 'function') this.root.setAttribute('aria-hidden', 'true');
       this.isOpen = false;
     }
+    this.callbacks.onOpenChange?.(false);
     this.callbacks.onClose?.();
   }
 
   toggle() {
     if (this.isOpen) this.close();
     else this.open();
+  }
+
+  _showError(title, err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error(`[OnlineDialog] ${title}:`, err);
+    this.currentError = { title, message: errorMsg };
+    this.render();
   }
 
   render() {
@@ -440,73 +593,132 @@ export class OnlineDialog {
     }
   }
 
+  _renderErrorBannerHtml() {
+    if (!this.currentError) return '';
+    return `
+      <div class="online-error-box" data-el="errorBox">
+        <div class="online-error-header">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span>⚠️</span>
+            <span>${this.currentError.title}</span>
+          </div>
+          <button class="online-btn online-btn--secondary" data-el="btnCopyError" style="padding:2px 8px;font-size:10px;">📋 Copy Error</button>
+        </div>
+        <div class="online-error-message">${this.currentError.message}</div>
+      </div>
+    `;
+  }
+
+  _bindErrorBanner() {
+    if (!this.currentError) return;
+    const btn = this.dom.content.querySelector('[data-el="btnCopyError"]');
+    btn?.addEventListener('click', () => {
+      const text = `Error: ${this.currentError.title}\nDetails: ${this.currentError.message}`;
+      if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(text);
+        btn.textContent = '✅ Copied!';
+        setTimeout(() => { if (btn) btn.textContent = '📋 Copy Error'; }, 1500);
+      }
+    });
+  }
+
   _renderLobbyView() {
     this.dom.badge.textContent = '120Hz P2P';
     this.dom.badge.style.borderColor = 'rgba(88, 166, 255, 0.4)';
     this.dom.badge.style.color = '#58a6ff';
 
     this.dom.content.innerHTML = `
+      ${this._renderErrorBannerHtml()}
+
       <div>
         <label style="font-size:11px;font-weight:700;color:#8b949e;text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:6px;">Player Call-Sign / Name</label>
-        <input type="text" class="online-input" data-el="inpPlayerName" value="${this.playerName}" maxlength="24" placeholder="Enter player name..." />
-      </div>
-
-      <div class="online-card-grid">
-        <div class="online-mode-card online-mode-card--accent" data-el="cardHost">
-          <div class="online-card-icon">🛡️</div>
-          <div class="online-card-title">HOST A SERVER</div>
-          <div class="online-card-desc">
-            Instantiates a dedicated <b>120Hz Web Worker</b> server on-demand. Tab throttling immune. Auto-joins as Car 0 (0ms local latency).
-          </div>
-          <button class="online-btn online-btn--purple" style="margin-top:auto;">Start Hosting</button>
-        </div>
-
-        <div class="online-mode-card" data-el="cardJoin">
-          <div class="online-card-icon">🔗</div>
-          <div class="online-card-title">JOIN A SERVER</div>
-          <div class="online-card-desc">
-            Connects to an existing Host via manual WebRTC tokens or instant BroadcastChannel cross-tab discovery. Plays as Car 1.
-          </div>
-          <button class="online-btn online-btn--blue" style="margin-top:auto;">Join Game</button>
+        <div style="display:flex;gap:8px;">
+          <input type="text" class="online-input" style="flex:1;" value="${this.playerName}" data-el="inpPlayerName" maxlength="20" placeholder="e.g. Striker-42" />
+          <button class="online-btn online-btn--secondary" data-el="btnRandomName">🎲 Random</button>
         </div>
       </div>
 
-      <div id="local-host-notice"></div>
+      <div id="local-host-notice">
+        <!-- Auto-discovery banner injected here -->
+      </div>
 
-      <div class="online-status-banner online-status-banner--info">
-        <span>⚡</span>
-        <div><b>Pure Peer-to-Peer:</b> Direct WebRTC RTCDataChannel (unreliable/unordered UDP) at 120Hz report rates. No 3rd-party signaling servers required.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:4px;">
+        <div style="background:rgba(88,166,255,0.06);border:1px solid rgba(88,166,255,0.25);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:10px;">
+          <div style="font-size:24px;">👑</div>
+          <div>
+            <div style="font-size:15px;font-weight:700;color:#58a6ff;">Host a Server</div>
+            <div style="font-size:11px;color:#8b949e;margin-top:2px;">Runs authoritative 120Hz RocketSim in a dedicated Web Worker on your machine</div>
+          </div>
+          <button class="online-btn online-btn--blue" data-el="btnHostServer" style="margin-top:auto;">🚀 Create Room</button>
+        </div>
+
+        <div style="background:rgba(235,115,0,0.06);border:1px solid rgba(235,115,0,0.25);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:10px;">
+          <div style="font-size:24px;">🎯</div>
+          <div>
+            <div style="font-size:15px;font-weight:700;color:#ff9b44;">Join a Server</div>
+            <div style="font-size:11px;color:#8b949e;margin-top:2px;">Connect with an Offer Token from another tab or host with client-side prediction</div>
+          </div>
+          <button class="online-btn online-btn--purple" data-el="btnJoinServer" style="margin-top:auto;">🔗 Connect to Host</button>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <button class="online-btn online-btn--secondary" data-el="btnOpenNetworkHUD" style="flex:1;">📊 Open Network Reconciler HUD</button>
       </div>
     `;
+
+    this._bindErrorBanner();
 
     const inpName = this.dom.content.querySelector('[data-el="inpPlayerName"]');
     inpName?.addEventListener('input', (e) => {
       this._savePlayerName(e.target.value);
     });
 
-    this.dom.content.querySelector('[data-el="cardHost"]')?.addEventListener('click', () => {
+    this.dom.content.querySelector('[data-el="btnRandomName"]')?.addEventListener('click', () => {
+      const rand = Math.floor(1000 + Math.random() * 9000);
+      this._savePlayerName(`Striker-${rand}`);
+      if (inpName) inpName.value = this.playerName;
+    });
+
+    this.dom.content.querySelector('[data-el="btnHostServer"]')?.addEventListener('click', () => {
       this._startHosting();
     });
 
-    this.dom.content.querySelector('[data-el="cardJoin"]')?.addEventListener('click', () => {
+    this.dom.content.querySelector('[data-el="btnJoinServer"]')?.addEventListener('click', () => {
       this.view = 'join';
       this.render();
+    });
+
+    this.dom.content.querySelector('[data-el="btnOpenNetworkHUD"]')?.addEventListener('click', () => {
+      this.callbacks.onOpenNetworkHUD?.();
     });
 
     this._renderLocalHostNotice();
   }
 
   _renderLocalHostNotice() {
-    const noticeEl = this.dom.content.querySelector('#local-host-notice');
-    if (!noticeEl || !this.detectedLocalHost) return;
+    const noticeEl = this.dom.content?.querySelector('#local-host-notice');
+    if (!noticeEl) return;
+
+    if (!this.detectedLocalHost || (this.detectedLocalHost.timestamp && Date.now() - this.detectedLocalHost.timestamp > 15000)) {
+      noticeEl.innerHTML = '';
+      return;
+    }
+
+    const hostColor = getCarColorSlotById(this.detectedLocalHost.colorSlot ?? 3);
 
     noticeEl.innerHTML = `
-      <div class="online-status-banner online-status-banner--success" style="justify-content:space-between;align-items:center;">
-        <div style="display:flex;align-items:center;gap:8px;">
-          <span>🎉</span>
-          <div>Found nearby Host: <b>${this.detectedLocalHost.hostName}</b> (Local Tab)</div>
+      <div class="online-status-banner online-status-banner--success" style="justify-content:space-between;align-items:center;background:rgba(46, 160, 67, 0.18);border:1px solid #3fb950;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span style="font-size:20px;">🟢</span>
+          <div>
+            <div style="font-size:13px;font-weight:700;color:#3fb950;">Nearby Host Detected: <b>${this.detectedLocalHost.hostName}</b></div>
+            <div style="font-size:11px;color:#c9d1d9;margin-top:1px;">
+              Team: <span style="color:${hostColor.hex};font-weight:700;">${hostColor.nameZh} (${hostColor.teamName})</span> &bull; 120Hz Local Tab
+            </div>
+          </div>
         </div>
-        <button class="online-btn online-btn--blue" data-el="btnInstantJoin" style="padding:4px 10px;font-size:11px;">⚡ 1-Click Join</button>
+        <button class="online-btn online-btn--blue" data-el="btnInstantJoin" style="padding:6px 14px;font-size:12px;font-weight:700;">⚡ 1-Click Join</button>
       </div>
     `;
 
@@ -521,46 +733,165 @@ export class OnlineDialog {
     });
   }
 
+  _renderColorPickerHtml(selectedSlotId, occupiedSlotId, role = 'host') {
+    const swatchesHtml = CAR_COLOR_SLOTS.map(slot => {
+      const isSelected = slot.id === selectedSlotId;
+      const isOccupied = slot.id === occupiedSlotId;
+      const teamTag = slot.team === 0 ? '蓝队' : '红/橙队';
+
+      return `
+        <div class="color-swatch-card ${isSelected ? 'is-selected' : ''} ${isOccupied ? 'is-occupied' : ''}"
+             data-slot-id="${slot.id}"
+             title="${slot.nameZh} (${slot.nameEn}) - ${slot.teamName}${isOccupied ? ' [已占用]' : ''}">
+          <div class="color-circle" style="background:${slot.hex};">
+            ${isSelected ? '✓' : ''}
+          </div>
+          <div class="color-label">${slot.nameZh} ${slot.nameEn}</div>
+          <div class="color-team-tag" style="color:${slot.team === 0 ? '#58a6ff' : '#ff9b44'};">[${teamTag}]</div>
+          ${isOccupied ? `<span class="color-occupied-badge">已占用</span>` : ''}
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <div>
+        <div class="color-palette-title">
+          <span>🎨 Car Color Customization (${role === 'host' ? 'Host: Car 0' : 'Client: Car 1'})</span>
+          <span style="color:${CAR_COLOR_SLOTS[selectedSlotId].hex};font-weight:700;">
+            ${CAR_COLOR_SLOTS[selectedSlotId].nameZh} (${CAR_COLOR_SLOTS[selectedSlotId].hex})
+          </span>
+        </div>
+        <div class="color-palette-grid">
+          ${swatchesHtml}
+        </div>
+      </div>
+    `;
+  }
+
+  _bindColorPicker(role = 'host') {
+    const cards = this.dom.content.querySelectorAll('.color-swatch-card');
+    cards.forEach(card => {
+      card.addEventListener('click', () => {
+        if (card.classList.contains('is-occupied')) return;
+        const slotId = Number(card.dataset.slotId);
+        const slot = getCarColorSlotById(slotId);
+
+        if (role === 'host') {
+          this.hostColorSlot = slot.id;
+          this.hostColorHex = slot.hex;
+          this.callbacks.onColorSelect?.(0, slot.id, slot.hex);
+          if (this.hostP2PChannel?.isOpen) {
+            this.hostP2PChannel.sendColorChange(slot.id, slot.hex, 0);
+          }
+          this._updateActiveRoomStorage();
+          this._renderHostView();
+        } else {
+          this.clientColorSlot = slot.id;
+          this.clientColorHex = slot.hex;
+          this.callbacks.onColorSelect?.(1, slot.id, slot.hex);
+          if (this.clientP2PChannel?.isOpen) {
+            this.clientP2PChannel.sendColorChange(slot.id, slot.hex, 1);
+          }
+          this._renderJoinView();
+        }
+      });
+    });
+  }
+
+  _updateActiveRoomStorage() {
+    if (typeof localStorage === 'undefined') return;
+    try {
+      const roomData = {
+        hostName: this.playerName,
+        token: this.offerToken,
+        colorSlot: this.hostColorSlot,
+        colorHex: this.hostColorHex,
+        timestamp: Date.now()
+      };
+      localStorage.setItem('car_soccer_active_host', JSON.stringify(roomData));
+    } catch (_) {}
+  }
+
   async _startHosting() {
     this.view = 'host';
+    this.currentError = null;
     this.render();
 
     try {
-      // 1. Tell GameRuntime to spin up dedicated AuthoritativeServerWorker client on-demand!
+      // 1. Tell GameRuntime to spin up dedicated AuthoritativeServerWorker client on-demand
       if (this.callbacks.onHostServer) {
         await this.callbacks.onHostServer({ playerName: this.playerName });
       }
+
+      // Apply Host initial car color to Car 0
+      this.callbacks.onColorSelect?.(0, this.hostColorSlot, this.hostColorHex);
 
       // 2. Create WebRTC channel for peer invites
       this.hostP2PChannel = new P2PWebRTCChannel({
         role: 'host',
         playerName: this.playerName,
+        colorSlot: this.hostColorSlot,
+        colorHex: this.hostColorHex,
         extraLatencyMs: 0
       });
 
-      this.hostP2PChannel.onConnected = () => {
+      this.hostP2PChannel.onConnected = async () => {
+        console.log('[OnlineDialog] Host peer connected:', this.hostP2PChannel.peerName || 'Player 2');
+        if (this.callbacks.onPeerConnected) {
+          await this.callbacks.onPeerConnected(this.hostP2PChannel, this.hostP2PChannel.peerName || 'Player 2');
+        }
+        // Apply opponent car color if specified by peer
+        if (this.hostP2PChannel.peerColorHex) {
+          this.callbacks.onColorSelect?.(1, this.hostP2PChannel.peerColorSlot, this.hostP2PChannel.peerColorHex);
+        }
         this._updateHostPeerStatus('connected');
       };
 
       this.hostP2PChannel.onDisconnected = () => {
+        console.log('[OnlineDialog] Host peer disconnected');
         this._updateHostPeerStatus('disconnected');
       };
 
+      this.hostP2PChannel.onColorChange = (msg) => {
+        console.log('[OnlineDialog] Opponent changed color:', msg);
+        this.callbacks.onColorSelect?.(msg.carIndex ?? 1, msg.slotId, msg.hex);
+        this._renderHostView();
+      };
+
       // 3. Generate self-contained Offer Token
-      this.offerToken = await this.hostP2PChannel.createOfferToken();
+      this.offerToken = await this.hostP2PChannel.createOfferToken({
+        hostColorSlot: this.hostColorSlot,
+        hostColorHex: this.hostColorHex
+      });
       this._renderHostView();
 
-      // Broadcast discovery advertisement
-      if (this.discoveryChannel) {
-        this.discoveryChannel.postMessage({
-          type: 'host_available',
-          hostName: this.playerName,
-          token: this.offerToken
-        });
-      }
+      // Write to localStorage for cross-tab discovery
+      this._updateActiveRoomStorage();
+
+      // Start periodic discovery heartbeat
+      if (this.discoveryHeartbeat) clearInterval(this.discoveryHeartbeat);
+      this.discoveryHeartbeat = setInterval(() => {
+        if (this.view !== 'host' || !this.offerToken) {
+          clearInterval(this.discoveryHeartbeat);
+          return;
+        }
+        this._updateActiveRoomStorage();
+        if (this.discoveryChannel) {
+          try {
+            this.discoveryChannel.postMessage({
+              type: 'host_available',
+              hostName: this.playerName,
+              token: this.offerToken,
+              colorSlot: this.hostColorSlot,
+              colorHex: this.hostColorHex,
+              timestamp: Date.now()
+            });
+          } catch (_) {}
+        }
+      }, 1000);
+
     } catch (err) {
-      console.error('[OnlineDialog] Failed to host server:', err);
-      alert('Failed to host server: ' + err.message);
+      this._showError('Failed to host server', err);
       this.view = 'lobby';
       this.render();
     }
@@ -572,8 +903,13 @@ export class OnlineDialog {
     this.dom.badge.style.color = '#d2a8ff';
 
     const isConnected = this.hostP2PChannel?.isOpen;
+    const opponentColorSlot = this.hostP2PChannel?.peerColorSlot ?? this.clientColorSlot;
+    const opponentColor = getCarColorSlotById(opponentColorSlot);
+    const myColor = getCarColorSlotById(this.hostColorSlot);
 
     this.dom.content.innerHTML = `
+      ${this._renderErrorBannerHtml()}
+
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <div>
           <div style="font-size:16px;font-weight:700;color:#ffffff;">Room Host Control Panel</div>
@@ -584,13 +920,19 @@ export class OnlineDialog {
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
         <div style="background:rgba(56,139,253,0.1);border:1px solid rgba(56,139,253,0.3);padding:10px;border-radius:6px;">
-          <div style="font-size:10px;font-weight:700;color:#58a6ff;text-transform:uppercase;">Player 1 (Host · Car 0)</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <div style="font-size:10px;font-weight:700;color:#58a6ff;text-transform:uppercase;">Player 1 (Host · Car 0)</div>
+            <div style="width:12px;height:12px;border-radius:50%;background:${myColor.hex};border:1px solid #fff;"></div>
+          </div>
           <div style="font-size:14px;font-weight:700;color:#ffffff;margin-top:2px;">${this.playerName}</div>
           <div style="font-size:11px;color:#3fb950;margin-top:2px;">● Local Loopback (0ms latency)</div>
         </div>
 
         <div style="background:rgba(235,115,0,0.1);border:1px solid rgba(235,115,0,0.3);padding:10px;border-radius:6px;">
-          <div style="font-size:10px;font-weight:700;color:#ff9b44;text-transform:uppercase;">Player 2 (Opponent · Car 1)</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <div style="font-size:10px;font-weight:700;color:#ff9b44;text-transform:uppercase;">Player 2 (Opponent · Car 1)</div>
+            ${isConnected ? `<div style="width:12px;height:12px;border-radius:50%;background:${opponentColor.hex};border:1px solid #fff;"></div>` : ''}
+          </div>
           <div style="font-size:14px;font-weight:700;color:#ffffff;margin-top:2px;" data-el="txtPeerStatus">
             ${isConnected ? (this.hostP2PChannel?.peerName || 'Connected Player') : 'Waiting for connection...'}
           </div>
@@ -600,16 +942,21 @@ export class OnlineDialog {
         </div>
       </div>
 
+      ${this._renderColorPickerHtml(this.hostColorSlot, isConnected ? opponentColorSlot : null, 'host')}
+
       ${isConnected ? `
         <div class="online-status-banner online-status-banner--success">
-          <span>🎉</span>
-          <div><b>Player 2 Connected!</b> Real-time 120Hz match active.</div>
+          <span style="font-size:18px;">🎉</span>
+          <div>
+            <b>Player 2 Connected!</b> Real-time 120Hz match active.
+            <div style="font-size:11px;color:#c9d1d9;font-weight:400;margin-top:2px;">Both cars initialized in the 3D stadium. Ready to play!</div>
+          </div>
         </div>
       ` : `
         <div class="online-step-box">
           <div class="online-step-header">
             <span class="online-step-num ${this.offerToken ? 'online-step-num--green' : ''}">1</span>
-            <span>Copy Offer Token and send to Player 2</span>
+            <span>Copy Offer Token and send to Player 2 (or use Auto-Discovery on nearby tab)</span>
           </div>
           <div style="display:flex;gap:8px;align-items:center;">
             <textarea class="online-textarea" rows="2" readonly data-el="txtOfferToken">${this.offerToken || 'Generating Offer token...'}</textarea>
@@ -631,9 +978,12 @@ export class OnlineDialog {
 
       <div style="display:flex;gap:8px;margin-top:4px;">
         <button class="online-btn online-btn--secondary" data-el="btnOpenNetworkHUD" style="flex:1;">📊 Network Diagnostics</button>
-        <button class="online-btn online-btn--blue" data-el="btnEnterArena" style="flex:1;">🚗 Enter Field</button>
+        <button class="online-btn online-btn--blue" data-el="btnEnterArena" style="flex:1;">🚗 Enter Arena</button>
       </div>
     `;
+
+    this._bindErrorBanner();
+    this._bindColorPicker('host');
 
     this.dom.content.querySelector('[data-el="btnBackLobby"]')?.addEventListener('click', () => {
       this.view = 'lobby';
@@ -654,16 +1004,25 @@ export class OnlineDialog {
     this.dom.content.querySelector('[data-el="btnConfirmAnswer"]')?.addEventListener('click', async () => {
       const inp = this.dom.content.querySelector('[data-el="txtAnswerInput"]');
       const token = inp?.value?.trim();
+      const btn = this.dom.content.querySelector('[data-el="btnConfirmAnswer"]');
+
       if (!token) {
-        alert('Please paste the Answer Token received from Player 2');
+        this._showError('Input Missing', 'Please paste the Answer Token received from Player 2 into Step 2.');
         return;
       }
       try {
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = '⏳ Connecting...';
+        }
         await this.hostP2PChannel.acceptAnswerToken(token);
-        const btn = this.dom.content.querySelector('[data-el="btnConfirmAnswer"]');
-        if (btn) btn.textContent = '⏳ Connecting...';
+        if (btn) btn.textContent = '✅ Answer Accepted';
       } catch (err) {
-        alert('Failed to connect with Answer Token: ' + err.message);
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = '🔗 Connect';
+        }
+        this._showError('Failed to connect with Answer Token', err);
       }
     });
 
@@ -688,25 +1047,56 @@ export class OnlineDialog {
     this.dom.badge.style.color = '#58a6ff';
 
     const isConnected = this.clientP2PChannel?.isOpen;
+    const hostColorSlot = this.clientP2PChannel?.peerColorSlot ?? this.detectedLocalHost?.colorSlot ?? this.hostColorSlot;
+    const hostColor = getCarColorSlotById(hostColorSlot);
+    const myColor = getCarColorSlotById(this.clientColorSlot);
 
     this.dom.content.innerHTML = `
+      ${this._renderErrorBannerHtml()}
+
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <div>
           <div style="font-size:16px;font-weight:700;color:#ffffff;">Join a Server (WebRTC)</div>
-          <div style="font-size:12px;color:#8b949e;">Connect to Host as Car 1 (Orange Team)</div>
+          <div style="font-size:12px;color:#8b949e;">Connect to Host as Car 1 with real-time prediction reconciler</div>
         </div>
         <button class="online-btn online-btn--secondary" data-el="btnBackLobby" style="font-size:11px;">← Lobby</button>
       </div>
 
-      <div style="background:rgba(235,115,0,0.1);border:1px solid rgba(235,115,0,0.3);padding:10px;border-radius:6px;">
-        <div style="font-size:10px;font-weight:700;color:#ff9b44;text-transform:uppercase;">Your Seat (Car 1 · Orange Team)</div>
-        <div style="font-size:14px;font-weight:700;color:#ffffff;margin-top:2px;">${this.playerName}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div style="background:rgba(235,115,0,0.1);border:1px solid rgba(235,115,0,0.3);padding:10px;border-radius:6px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <div style="font-size:10px;font-weight:700;color:#ff9b44;text-transform:uppercase;">Your Seat (Car 1)</div>
+            <div style="width:12px;height:12px;border-radius:50%;background:${myColor.hex};border:1px solid #fff;"></div>
+          </div>
+          <div style="font-size:14px;font-weight:700;color:#ffffff;margin-top:2px;">${this.playerName}</div>
+          <div style="font-size:11px;color:${isConnected ? '#3fb950' : '#8b949e'};margin-top:2px;">
+            ${isConnected ? '● Connected via WebRTC 120Hz' : '○ Waiting for Connection'}
+          </div>
+        </div>
+
+        <div style="background:rgba(56,139,253,0.1);border:1px solid rgba(56,139,253,0.3);padding:10px;border-radius:6px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <div style="font-size:10px;font-weight:700;color:#58a6ff;text-transform:uppercase;">Host (Car 0)</div>
+            <div style="width:12px;height:12px;border-radius:50%;background:${hostColor.hex};border:1px solid #fff;"></div>
+          </div>
+          <div style="font-size:14px;font-weight:700;color:#ffffff;margin-top:2px;">
+            ${this.clientP2PChannel?.peerName || this.detectedLocalHost?.hostName || 'Host'}
+          </div>
+          <div style="font-size:11px;color:${isConnected ? '#3fb950' : '#8b949e'};margin-top:2px;">
+            ${isConnected ? '● Synchronized at 120Hz' : '○ Standby for Handshake'}
+          </div>
+        </div>
       </div>
+
+      ${this._renderColorPickerHtml(this.clientColorSlot, hostColorSlot, 'client')}
 
       ${isConnected ? `
         <div class="online-status-banner online-status-banner--success">
-          <span>🎉</span>
-          <div><b>Connected to Host!</b> Physics timeline synchronized at 120Hz.</div>
+          <span style="font-size:18px;">🎉</span>
+          <div>
+            <b>Connected to Host!</b> Physics timeline synchronized at 120Hz.
+            <div style="font-size:11px;color:#c9d1d9;font-weight:400;margin-top:2px;">Authoritative snapshots streaming. Click "Enter Arena" to start!</div>
+          </div>
         </div>
       ` : `
         <div class="online-step-box">
@@ -734,9 +1124,12 @@ export class OnlineDialog {
 
       <div style="display:flex;gap:8px;margin-top:4px;">
         <button class="online-btn online-btn--secondary" data-el="btnOpenNetworkHUD" style="flex:1;">📊 Network Diagnostics</button>
-        <button class="online-btn online-btn--blue" data-el="btnEnterArena" style="flex:1;">🚗 Enter Field</button>
+        <button class="online-btn online-btn--blue" data-el="btnEnterArena" style="flex:1;">🚗 Enter Arena</button>
       </div>
     `;
+
+    this._bindErrorBanner();
+    this._bindColorPicker('client');
 
     this.dom.content.querySelector('[data-el="btnBackLobby"]')?.addEventListener('click', () => {
       this.view = 'lobby';
@@ -771,7 +1164,7 @@ export class OnlineDialog {
     const inp = this.dom.content.querySelector('[data-el="txtOfferInput"]');
     const offer = inp?.value?.trim();
     if (!offer) {
-      alert('Please paste the Offer Token from the Host first');
+      this._showError('Input Missing', 'Please paste the Offer Token from the Host into Step 1 first.');
       return;
     }
 
@@ -779,29 +1172,73 @@ export class OnlineDialog {
       this.clientP2PChannel = new P2PWebRTCChannel({
         role: 'client',
         playerName: this.playerName,
+        colorSlot: this.clientColorSlot,
+        colorHex: this.clientColorHex,
         extraLatencyMs: 0
       });
 
       this.clientP2PChannel.onConnected = async () => {
+        console.log('[OnlineDialog] Client WebRTC channel connected with host!');
         if (this.callbacks.onJoinServer) {
           await this.callbacks.onJoinServer({
             channel: this.clientP2PChannel,
             playerName: this.playerName,
-            remotePlayerName: 'Host'
+            remotePlayerName: this.clientP2PChannel.peerName || 'Host'
           });
         }
+        // Apply host car color if specified by host
+        if (this.clientP2PChannel.peerColorHex) {
+          this.callbacks.onColorSelect?.(0, this.clientP2PChannel.peerColorSlot, this.clientP2PChannel.peerColorHex);
+        }
+        // Apply client car color
+        this.callbacks.onColorSelect?.(1, this.clientColorSlot, this.clientColorHex);
         this._renderJoinView();
       };
 
-      this.answerToken = await this.clientP2PChannel.acceptOfferAndCreateAnswer(offer);
+      this.clientP2PChannel.onDisconnected = () => {
+        console.log('[OnlineDialog] Client disconnected from host');
+        this._renderJoinView();
+      };
+
+      this.clientP2PChannel.onColorChange = (msg) => {
+        console.log('[OnlineDialog] Remote host changed color:', msg);
+        this.callbacks.onColorSelect?.(msg.carIndex ?? 0, msg.slotId, msg.hex);
+        this._renderJoinView();
+      };
+
+      this.answerToken = await this.clientP2PChannel.acceptOfferAndCreateAnswer(offer, {
+        clientColorSlot: this.clientColorSlot,
+        clientColorHex: this.clientColorHex
+      });
+
+      // Auto-broadcast room answer for instant local tab pairing
+      if (this.discoveryChannel) {
+        try {
+          this.discoveryChannel.postMessage({
+            type: 'room_answer',
+            answerToken: this.answerToken,
+            clientName: this.playerName,
+            clientColorSlot: this.clientColorSlot,
+            clientColorHex: this.clientColorHex
+          });
+        } catch (_) {}
+      }
+
       this._renderJoinView();
     } catch (err) {
-      console.error('[OnlineDialog] Failed to generate answer:', err);
-      alert('Failed to generate answer: ' + err.message);
+      this._showError('Failed to generate answer', err);
     }
   }
 
   destroy() {
+    try {
+      if (this.discoveryHeartbeat) clearInterval(this.discoveryHeartbeat);
+      if (this.view === 'host' && this.discoveryChannel) {
+        this.discoveryChannel.postMessage({ type: 'host_closed', hostName: this.playerName });
+        localStorage.removeItem('car_soccer_active_host');
+      }
+    } catch (_) {}
+
     try { this.hostP2PChannel?.destroy(); } catch (_) {}
     try { this.clientP2PChannel?.destroy(); } catch (_) {}
     try { this.discoveryChannel?.close(); } catch (_) {}

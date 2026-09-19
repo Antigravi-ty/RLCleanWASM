@@ -221,3 +221,115 @@ test('PhysicsRateHUD: renders physics rate and live measured RTT', () => {
   hud.updateRateAndRtt(120, null);
   assert.equal(hud.root.textContent, 'Phy:120.0');
 });
+
+import { CAR_COLOR_SLOTS, getCarColorSlotById, parseColorToNumber } from '../src/entities/CarColorConstants.js';
+import { isEventWithinUI } from '../src/input/KeyboardMouseController.js';
+
+test('CarColorConstants: 6 standard multiplayer color slots specification', () => {
+  assert.equal(CAR_COLOR_SLOTS.length, 6);
+
+  const slot0 = getCarColorSlotById(0);
+  assert.equal(slot0.nameEn, 'Red');
+  assert.equal(slot0.nameZh, '红');
+  assert.equal(slot0.hex, '#ff7043');
+  assert.equal(slot0.team, 1);
+
+  const slot1 = getCarColorSlotById(1);
+  assert.equal(slot1.nameEn, 'Green');
+  assert.equal(slot1.nameZh, '绿');
+  assert.equal(slot1.hex, '#66bb6a');
+  assert.equal(slot1.team, 0);
+
+  const slot2 = getCarColorSlotById(2);
+  assert.equal(slot2.nameEn, 'Yellow');
+  assert.equal(slot2.nameZh, '黄');
+  assert.equal(slot2.hex, '#ffc107');
+  assert.equal(slot2.team, 1);
+
+  const slot3 = getCarColorSlotById(3);
+  assert.equal(slot3.nameEn, 'Blue');
+  assert.equal(slot3.nameZh, '蓝');
+  assert.equal(slot3.hex, '#42a5f5');
+  assert.equal(slot3.team, 0);
+
+  const slot4 = getCarColorSlotById(4);
+  assert.equal(slot4.nameEn, 'Pink');
+  assert.equal(slot4.nameZh, '粉');
+  assert.equal(slot4.hex, '#fd6e9d');
+  assert.equal(slot4.team, 1);
+
+  const slot5 = getCarColorSlotById(5);
+  assert.equal(slot5.nameEn, 'Purple');
+  assert.equal(slot5.nameZh, '紫');
+  assert.equal(slot5.hex, '#ba68c8');
+  assert.equal(slot5.team, 0);
+
+  // Fallback
+  assert.equal(getCarColorSlotById(99).id, 0);
+
+  // Parse to number
+  assert.equal(parseColorToNumber('#ff7043'), 0xff7043);
+  assert.equal(parseColorToNumber('#42a5f5'), 0x42a5f5);
+  assert.equal(parseColorToNumber(0x66bb6a), 0x66bb6a);
+});
+
+test('UI Target Inclusion: isEventWithinUI recognizes .online-overlay, #online-button, and .net-hud', () => {
+  function makeMockElement(className, id = '') {
+    return {
+      nodeType: 1,
+      className,
+      id,
+      closest(sel) {
+        const selectors = sel.split(',').map(s => s.trim());
+        for (const s of selectors) {
+          if (s.startsWith('.') && this.className.includes(s.slice(1))) return this;
+          if (s.startsWith('#') && this.id === s.slice(1)) return this;
+        }
+        return null;
+      }
+    };
+  }
+
+  // Under Node environment Element might need minimal prototype check
+  const origElement = globalThis.Element;
+  globalThis.Element = class {};
+
+  const onlineOverlay = makeMockElement('online-overlay');
+  Object.setPrototypeOf(onlineOverlay, globalThis.Element.prototype);
+
+  const onlineBtn = makeMockElement('online-tab-btn', 'online-button');
+  Object.setPrototypeOf(onlineBtn, globalThis.Element.prototype);
+
+  const netHud = makeMockElement('net-hud');
+  Object.setPrototypeOf(netHud, globalThis.Element.prototype);
+
+  const gameCanvas = makeMockElement('game-canvas');
+  Object.setPrototypeOf(gameCanvas, globalThis.Element.prototype);
+
+  assert.equal(isEventWithinUI(onlineOverlay), true);
+  assert.equal(isEventWithinUI(onlineBtn), true);
+  assert.equal(isEventWithinUI(netHud), true);
+  assert.equal(isEventWithinUI(gameCanvas), false);
+
+  globalThis.Element = origElement;
+});
+
+test('P2PWebRTCChannel: acceptAnswerToken avoids exception when signalingState is stable', async () => {
+  const channel = new P2PWebRTCChannel({ role: 'host' });
+  channel.pc = {
+    signalingState: 'stable',
+    setRemoteDescription: async () => {
+      throw new Error('Called in wrong state: stable');
+    }
+  };
+
+  // Should return gracefully without throwing
+  let thrown = false;
+  try {
+    await channel.acceptAnswerToken('RL_ANSWER_fake');
+  } catch (err) {
+    thrown = true;
+  }
+  channel.destroy();
+  assert.equal(thrown, false);
+});
