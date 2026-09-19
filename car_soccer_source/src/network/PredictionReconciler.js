@@ -78,6 +78,10 @@ export class PredictionReconciler {
    * @param {number} [rttMs]
    * @returns {number}
    */
+  get clientReportRate() {
+    return 120;
+  }
+
   calculateLeadTicks(rttMs = this.channel?.rttMs || 80) {
     const oneWayMs = rttMs * 0.5;
     const jitterBufferTicks = 2;

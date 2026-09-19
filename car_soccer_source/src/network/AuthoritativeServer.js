@@ -30,7 +30,7 @@ export class AuthoritativeServer {
     this.sim = null;
     this.active = false;
 
-    this.snapshotInterval = options.snapshotInterval ?? 2;
+    this.snapshotInterval = options.snapshotInterval ?? 1;
     this.fixedTimestep = 1.0 / 120.0;
     this.fixedTimestepMs = 1000.0 / 120.0;
     this.accumulator = 0;
@@ -71,6 +71,18 @@ export class AuthoritativeServer {
         this.channels.unshift(ch);
       }
     }
+  }
+
+  setServerReportRate(hz) {
+    if (hz >= 120) this.snapshotInterval = 1;
+    else if (hz >= 60) this.snapshotInterval = 2;
+    else if (hz >= 40) this.snapshotInterval = 3;
+    else if (hz >= 30) this.snapshotInterval = 4;
+    else this.snapshotInterval = Math.max(1, Math.round(120 / hz));
+  }
+
+  get serverReportRate() {
+    return Math.round(120 / Math.max(1, this.snapshotInterval));
   }
 
   addClientChannel(channel) {

@@ -18,7 +18,7 @@ export class DedicatedServerWorkerClient {
    * @param {object} [options={}]
    */
   constructor(channel = null, options = {}) {
-    this.options = options;
+    this.options = { snapshotInterval: 1, ...options };
     this.channels = [];
     this.channelMap = new Map(); // channel -> channelId
     this.nextChannelId = 0;
@@ -277,6 +277,33 @@ export class DedicatedServerWorkerClient {
           }
         }
       }
+    }
+  }
+
+  notifyPlayerJoined(carIndex, name = 'Player', role = 'player') {
+    if (this.isWorker) {
+      this.sim.numCars = Math.max(this.sim.numCars, carIndex + 1);
+      this._postCommand('playerJoined', { carIndex, name, role });
+    } else if (this.fallbackServer) {
+      console.log("[AuthoritativeServer] Player joined: carIndex=" + carIndex + ", name=\"" + name + "\", role=\"" + role + "\"");
+      this.fallbackServer.ensureCar(carIndex, carIndex === 0 ? 0 : 1);
+    }
+  }
+
+  notifyPlayerLeft(carIndex, name = 'Player') {
+    if (this.isWorker) {
+      this._postCommand('playerLeft', { carIndex, name });
+    } else if (this.fallbackServer) {
+      console.log("[AuthoritativeServer] Player left: carIndex=" + carIndex + ", name=\"" + name + "\"");
+    }
+  }
+
+  setSnapshotInterval(interval) {
+    const val = Math.max(1, interval);
+    if (this.isWorker) {
+      this._postCommand('setSnapshotInterval', { interval: val });
+    } else if (this.fallbackServer) {
+      this.fallbackServer.snapshotInterval = val;
     }
   }
 

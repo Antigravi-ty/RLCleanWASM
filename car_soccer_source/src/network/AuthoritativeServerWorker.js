@@ -6,7 +6,7 @@
  * - Immune to main-thread tab throttling, lost focus, backgrounding, and tab switching.
  * - Drives an autonomous 120Hz fixed-timestep accumulator loop.
  * - Manages multi-client input buffering, anti-cheat gap locking, and authoritative stepping.
- * - Dispatches authoritative state snapshots at configured intervals (e.g. 60Hz).
+ * - Dispatches authoritative state snapshots at configured intervals (default 120Hz = 1 tick).
  */
 
 import { AuthoritativeServer } from './AuthoritativeServer.js';
@@ -112,6 +112,11 @@ self.onmessage = async (event) => {
     switch (type) {
       case 'init': {
         const options = data.options || {};
+        // Default to 120Hz authoritative snapshot broadcast rate (interval = 1 tick)
+        if (options.snapshotInterval === undefined) {
+          options.snapshotInterval = 1;
+        }
+
         if (options.collisionData && Array.isArray(options.collisionData)) {
           RocketSimPhysicsEngine.cachedCollisionData = options.collisionData.map(
             (c) => (c instanceof Uint8Array ? c : new Uint8Array(c))
@@ -167,6 +172,32 @@ self.onmessage = async (event) => {
           server?.removeClientChannel(ch);
           clientChannels.delete(channelId);
         }
+        break;
+      }
+
+      case 'playerJoined': {
+        const { carIndex, name, role } = data;
+        console.log(`[AuthoritativeServerWorker] Player joined: carIndex=${carIndex}, name="${name || 'Anonymous'}", role="${role || 'player'}", timestamp=${performance.now()}`);
+        if (server && carIndex !== undefined) {
+          server.ensureCar(carIndex, carIndex === 0 ? 0 : 1);
+        }
+        self.postMessage({ type: 'playerJoined_done', reqId, carIndex, name });
+        break;
+      }
+
+      case 'playerLeft': {
+        const { carIndex, name } = data;
+        console.log(`[AuthoritativeServerWorker] Player left: carIndex=${carIndex}, name="${name || 'Anonymous'}", timestamp=${performance.now()}`);
+        self.postMessage({ type: 'playerLeft_done', reqId, carIndex });
+        break;
+      }
+
+      case 'setSnapshotInterval': {
+        const interval = Math.max(1, data.interval ?? 1);
+        if (server) {
+          server.snapshotInterval = interval;
+        }
+        self.postMessage({ type: 'setSnapshotInterval_done', reqId, interval });
         break;
       }
 
