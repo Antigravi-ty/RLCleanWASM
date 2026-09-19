@@ -1,7 +1,7 @@
 /**
  * PhysicsRateHUD.js
- * Visual indicator badge for client physics rate in the top-left HUD.
- * Renders current physics pacing rate (e.g. Phy:120.0).
+ * Visual indicator badge for client physics rate and live RTT latency in the top-left HUD.
+ * Renders current physics pacing rate (e.g. Phy:120.0 | RTT: 2ms).
  */
 
 export class PhysicsRateHUD {
@@ -12,6 +12,7 @@ export class PhysicsRateHUD {
   constructor(container = (typeof document !== 'undefined' ? document.body : null), initialRate = 120) {
     this.container = container;
     this.rate = initialRate;
+    this.rttMs = null;
     this.root = null;
 
     if (typeof document !== 'undefined') {
@@ -43,9 +44,19 @@ export class PhysicsRateHUD {
       pointer-events: none;
       user-select: none;
     `;
-    this.update(this.rate);
+    this.renderText();
     if (this.container) {
       this.container.appendChild(this.root);
+    }
+  }
+
+  renderText() {
+    if (!this.root) return;
+    const rateStr = `Phy:${Number(this.rate).toFixed(1)}`;
+    if (this.rttMs !== null && this.rttMs !== undefined && this.rttMs >= 0) {
+      this.root.textContent = `${rateStr} | RTT:${Math.round(this.rttMs)}ms`;
+    } else {
+      this.root.textContent = rateStr;
     }
   }
 
@@ -55,9 +66,18 @@ export class PhysicsRateHUD {
    */
   update(rate) {
     this.rate = rate;
-    if (this.root) {
-      this.root.textContent = `Phy:${Number(rate).toFixed(1)}`;
-    }
+    this.renderText();
+  }
+
+  /**
+   * Updates physics rate and live measured RTT latency
+   * @param {number} rate
+   * @param {number|null} [rttMs=null]
+   */
+  updateRateAndRtt(rate, rttMs = null) {
+    this.rate = rate;
+    this.rttMs = rttMs;
+    this.renderText();
   }
 
   setVisible(visible) {

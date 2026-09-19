@@ -3,12 +3,14 @@
  * Real-time HUD & Network Stress Testing Controller for Multiplayer Prediction & Headless Client Replication.
  * 
  * Displays:
- * - Real Client Ping (RTT), Lead Ticks, Tick vs Authoritative Server Tick
- * - Headless Client 2 Ping (RTT), Lead Ticks, Status (Connected / Synced)
+ * - Real Client Ping (RTT), Lead Ticks, Tick vs Authoritative Server Tick (+delta ticks)
+ * - 120Hz Server and Client Report Rates
  * - Dynamic Asymmetric Latency Lead & Input Leader Indicator
  * - Isolated Input Replication Status (Jump Hold & Aerial Air Roll Synced)
  * - Reconciliation Corrections / Misprediction Glitches & Visual Smoothing
- * - Interactive sliders for Real Client latency, Headless Client latency, and packet loss
+ * - Interactive sliders for Latency (default 0ms extra), Loss, and Burst Drop
+ * - 1-Click "Copy Diagnostic Data" button for rapid troubleshooting
+ * - Fully closable via [✕] button, footer close button, or Escape key
  */
 
 export class NetworkReconciliationHUD {
@@ -53,14 +55,17 @@ export class NetworkReconciliationHUD {
       style.textContent = `
         .net-hud {
           position: fixed;
-          top: 80px;
+          top: 70px;
           left: 20px;
-          width: 390px;
+          width: 410px;
+          max-width: calc(100vw - 40px);
+          max-height: calc(100vh - 90px);
           background: rgba(13, 17, 23, 0.95);
-          backdrop-filter: blur(12px);
-          border: 1px solid rgba(163, 113, 247, 0.4);
+          backdrop-filter: blur(14px);
+          -webkit-backdrop-filter: blur(14px);
+          border: 1px solid rgba(163, 113, 247, 0.45);
           border-radius: 10px;
-          box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6);
+          box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7);
           color: #e6edf3;
           font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
           font-size: 12px;
@@ -69,10 +74,11 @@ export class NetworkReconciliationHUD {
           display: flex;
           flex-direction: column;
           overflow: hidden;
+          pointer-events: auto;
         }
         .net-header {
           padding: 10px 14px;
-          background: rgba(22, 27, 34, 0.9);
+          background: rgba(22, 27, 34, 0.92);
           border-bottom: 1px solid rgba(255, 255, 255, 0.1);
           display: flex;
           align-items: center;
@@ -107,23 +113,31 @@ export class NetworkReconciliationHUD {
           gap: 6px;
         }
         .net-btn-icon {
-          background: transparent;
-          border: 1px solid rgba(255, 255, 255, 0.15);
-          color: #8b949e;
+          background: rgba(255, 255, 255, 0.08);
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          color: #c9d1d9;
           border-radius: 4px;
-          padding: 2px 6px;
+          padding: 3px 8px;
           cursor: pointer;
-          font-size: 11px;
+          font-size: 12px;
+          font-weight: bold;
+          line-height: 1;
         }
         .net-btn-icon:hover {
-          background: rgba(255, 255, 255, 0.1);
-          color: #c9d1d9;
+          background: rgba(255, 255, 255, 0.2);
+          color: #ffffff;
+        }
+        .net-btn-icon--close:hover {
+          background: #da3633;
+          border-color: #f85149;
+          color: #ffffff;
         }
         .net-body {
           padding: 12px 14px;
           display: flex;
           flex-direction: column;
           gap: 10px;
+          overflow-y: auto;
         }
         .net-grid {
           display: grid;
@@ -181,6 +195,7 @@ export class NetworkReconciliationHUD {
         }
         .net-slider-wrap input[type="range"] {
           width: 125px;
+          cursor: pointer;
         }
         .net-btn-row {
           display: flex;
@@ -190,14 +205,15 @@ export class NetworkReconciliationHUD {
         .net-btn {
           flex: 1;
           background: #21262d;
-          border: 1px solid rgba(240, 246, 252, 0.1);
+          border: 1px solid rgba(240, 246, 252, 0.15);
           border-radius: 6px;
           color: #c9d1d9;
-          padding: 5px 8px;
+          padding: 6px 10px;
           font-size: 11px;
           cursor: pointer;
           font-weight: 600;
           text-align: center;
+          transition: background 0.15s, color 0.15s;
         }
         .net-btn:hover {
           background: #30363d;
@@ -210,6 +226,14 @@ export class NetworkReconciliationHUD {
         }
         .net-btn--accent:hover {
           background: #a371f7;
+        }
+        .net-btn--copy {
+          background: #1f6feb;
+          border-color: #388bfd;
+          color: #ffffff;
+        }
+        .net-btn--copy:hover {
+          background: #388bfd;
         }
         .net-status-box {
           background: rgba(110, 64, 201, 0.15);
@@ -233,37 +257,37 @@ export class NetworkReconciliationHUD {
       <div class="net-header" data-el="header">
         <div class="net-title">
           <span>NETWORK CONTROLLER</span>
-          <span class="net-badge" data-el="badge">HEADLESS SYNC</span>
+          <span class="net-badge" data-el="badge">120Hz SYNC</span>
         </div>
         <div class="net-actions">
           <button class="net-btn-icon" data-el="btnMinimize" title="Minimize / Expand">_</button>
-          <button class="net-btn-icon" data-el="btnClose" title="Close (Ctrl+O)">✕</button>
+          <button class="net-btn-icon net-btn-icon--close" data-el="btnClose" title="Close Panel (Esc / Shift+P)">✕</button>
         </div>
       </div>
       <div class="net-body" data-el="body">
         <div>
           <div class="net-section-title">
-            <span>Dual-Client Synchronization</span>
-            <span style="font-size:9px;color:#58a6ff" data-el="txtLeader">Leader: Real Client</span>
+            <span>Multiplayer Synchronization</span>
+            <span style="font-size:9px;color:#58a6ff" data-el="txtRates">Server: 120Hz · Client: 120Hz</span>
           </div>
           <div class="net-grid">
-            <span class="net-cell-label">Real Client (Car 0):</span>
-            <span class="net-cell-value net-cell-value--purple" data-el="valRtt">40 ms (RTT 80 ms)</span>
-            <span class="net-cell-label">Real Client Lead:</span>
-            <span class="net-cell-value net-cell-value--green" data-el="valLead">0 ticks</span>
-            <span class="net-cell-label">Headless (Car 1):</span>
-            <span class="net-cell-value net-cell-value--cyan" data-el="valHeadlessRtt">40 ms (RTT 80 ms)</span>
-            <span class="net-cell-label">Headless Lead:</span>
-            <span class="net-cell-value net-cell-value--cyan" data-el="valHeadlessLead">0 ticks</span>
+            <span class="net-cell-label">Client RTT Latency:</span>
+            <span class="net-cell-value net-cell-value--purple" data-el="valRtt">0 ms (RTT 0 ms)</span>
             <span class="net-cell-label">Client / Server Tick:</span>
-            <span class="net-cell-value" data-el="valTicks">0 / 0</span>
-            <span class="net-cell-label">Packet Loss:</span>
+            <span class="net-cell-value net-cell-value--green" data-el="valTicks">0 / 0 (+0 ticks)</span>
+            <span class="net-cell-label">Client Timeline Lead:</span>
+            <span class="net-cell-value net-cell-value--cyan" data-el="valLead">0 ticks</span>
+            <span class="net-cell-label">Report Rates (S / C):</span>
+            <span class="net-cell-value" data-el="valReportRates">120 Hz / 120 Hz</span>
+            <span class="net-cell-label">Packet Loss Rate:</span>
             <span class="net-cell-value" data-el="valLoss">0.0 %</span>
+            <span class="net-cell-label">Opponent / Peer:</span>
+            <span class="net-cell-value" data-el="valHeadlessRtt">0 ms (RTT 0 ms)</span>
           </div>
         </div>
 
         <div class="net-status-box" data-el="boxStatus">
-          <b>Input Isolation Mode:</b> Headless Car 1 replicates <b>Jump (Hold & Double)</b> and <b>Aerial Air Roll</b>. Ground steering/throttle isolated.
+          <b>P2P Protocol:</b> 120Hz fixed-timestep authoritative loop. Past is immutable (zero server rewind). Press <b>Esc</b> or click <b>✕</b> to close.
         </div>
 
         <div>
@@ -284,18 +308,18 @@ export class NetworkReconciliationHUD {
           <div class="net-section-title">Latency & Loss Configuration</div>
 
           <div class="net-row">
-            <span class="net-cell-label">Real Client Latency [9 / 0]:</span>
+            <span class="net-cell-label">Extra Latency [9 / 0]:</span>
             <div class="net-slider-wrap">
-              <input type="range" data-el="sliderRtt" min="0" max="500" step="5" value="40" />
-              <span data-el="txtSliderRtt" style="min-width:120px;text-align:right">40ms (RTT 80ms)</span>
+              <input type="range" data-el="sliderRtt" min="0" max="500" step="5" value="0" />
+              <span data-el="txtSliderRtt" style="min-width:120px;text-align:right">+0ms (RTT 0ms)</span>
             </div>
           </div>
 
           <div class="net-row">
-            <span class="net-cell-label">Headless Client Latency:</span>
+            <span class="net-cell-label">Peer Extra Latency:</span>
             <div class="net-slider-wrap">
-              <input type="range" data-el="sliderHeadlessRtt" min="0" max="500" step="5" value="40" />
-              <span data-el="txtSliderHeadlessRtt" style="min-width:120px;text-align:right">40ms (RTT 80ms)</span>
+              <input type="range" data-el="sliderHeadlessRtt" min="0" max="500" step="5" value="0" />
+              <span data-el="txtSliderHeadlessRtt" style="min-width:120px;text-align:right">+0ms (RTT 0ms)</span>
             </div>
           </div>
 
@@ -343,6 +367,11 @@ export class NetworkReconciliationHUD {
             <button class="net-btn net-btn--accent" data-el="btnDropBurst" title="Drop packet burst (Hotkey 8)">Drop Burst (5) [8]</button>
             <button class="net-btn" data-el="btnReset">Reset Stats</button>
           </div>
+
+          <div class="net-btn-row">
+            <button class="net-btn net-btn--copy" data-el="btnCopyDiagnostics" title="Copy full diagnostics JSON to clipboard">📋 Copy Diagnostics</button>
+            <button class="net-btn" data-el="btnCloseBottom" title="Close Network Controller">✕ Close Panel</button>
+          </div>
         </div>
       </div>
     `;
@@ -355,17 +384,19 @@ export class NetworkReconciliationHUD {
       body: root.querySelector('[data-el="body"]'),
       btnMinimize: root.querySelector('[data-el="btnMinimize"]'),
       btnClose: root.querySelector('[data-el="btnClose"]'),
-      txtLeader: root.querySelector('[data-el="txtLeader"]'),
+      btnCloseBottom: root.querySelector('[data-el="btnCloseBottom"]'),
+      btnCopyDiagnostics: root.querySelector('[data-el="btnCopyDiagnostics"]'),
+      txtRates: root.querySelector('[data-el="txtRates"]'),
       valRtt: root.querySelector('[data-el="valRtt"]'),
       valHeadlessRtt: root.querySelector('[data-el="valHeadlessRtt"]'),
-      valHeadlessLead: root.querySelector('[data-el="valHeadlessLead"]'),
       valLoss: root.querySelector('[data-el="valLoss"]'),
       valTicks: root.querySelector('[data-el="valTicks"]'),
+      valLead: root.querySelector('[data-el="valLead"]'),
+      valReportRates: root.querySelector('[data-el="valReportRates"]'),
       valCorrections: root.querySelector('[data-el="valCorrections"]'),
       valLastError: root.querySelector('[data-el="valLastError"]'),
       valMaxError: root.querySelector('[data-el="valMaxError"]'),
       valSmoothing: root.querySelector('[data-el="valSmoothing"]'),
-      valLead: root.querySelector('[data-el="valLead"]'),
       chkSmoothing: root.querySelector('[data-el="chkSmoothing"]'),
       chkRedundant: root.querySelector('[data-el="chkRedundant"]'),
       sliderRtt: root.querySelector('[data-el="sliderRtt"]'),
@@ -387,28 +418,42 @@ export class NetworkReconciliationHUD {
   }
 
   bindEvents() {
-    this.dom.btnClose.addEventListener('click', () => this.hide());
+    this.dom.btnClose.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.hide();
+    });
+    this.dom.btnCloseBottom.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.hide();
+    });
     this.dom.btnMinimize.addEventListener('click', () => this.toggleMinimize());
 
     this.dom.sliderRtt.addEventListener('input', (e) => {
-      const latency = parseInt(e.target.value, 10);
-      const rtt = latency * 2;
-      this.dom.txtSliderRtt.textContent = `${latency}ms (RTT ${rtt}ms)`;
-      if (this.channel) this.channel.setRtt(rtt);
-      if (this.reconciler) this.reconciler.leadTicks = this.reconciler.calculateLeadTicks(rtt);
+      const extraLatency = parseInt(e.target.value, 10);
+      const extraRtt = extraLatency * 2;
+      this.dom.txtSliderRtt.textContent = `+${extraLatency}ms (RTT ${extraRtt}ms)`;
+      if (this.channel?.setExtraLatency) {
+        this.channel.setExtraLatency(extraLatency);
+      } else if (this.channel?.setRtt) {
+        this.channel.setRtt(extraRtt);
+      }
+      if (this.reconciler) {
+        const totalRtt = this.channel?.rttMs ?? extraRtt;
+        this.reconciler.leadTicks = this.reconciler.calculateLeadTicks(totalRtt);
+      }
       this.syncLatencyValues();
-      this.updateLeaderInfo();
     });
 
     this.dom.sliderHeadlessRtt.addEventListener('input', (e) => {
       const latency = parseInt(e.target.value, 10);
       const rtt = latency * 2;
-      this.dom.txtSliderHeadlessRtt.textContent = `${latency}ms (RTT ${rtt}ms)`;
-      if (this.headlessClient) {
+      this.dom.txtSliderHeadlessRtt.textContent = `+${latency}ms (RTT ${rtt}ms)`;
+      if (this.headlessClient?.setExtraLatency) {
+        this.headlessClient.setExtraLatency(latency);
+      } else if (this.headlessClient?.setRtt) {
         this.headlessClient.setRtt(rtt);
       }
       this.syncLatencyValues();
-      this.updateLeaderInfo();
     });
 
     this.dom.sliderStep.addEventListener('input', (e) => {
@@ -452,6 +497,10 @@ export class NetworkReconciliationHUD {
       this.dropPacketBurst();
     });
 
+    this.dom.btnCopyDiagnostics?.addEventListener('click', () => {
+      this.copyDiagnostics();
+    });
+
     this.dom.btnReset.addEventListener('click', () => {
       if (this.reconciler) this.reconciler.resetStats();
       if (this.channel) this.channel.reset();
@@ -462,16 +511,53 @@ export class NetworkReconciliationHUD {
     this.makeDraggable(this.dom.header);
   }
 
-  updateLeaderInfo() {
-    if (this.coordinator && this.dom.txtLeader) {
-      const info = this.coordinator.getLeaderInfo();
-      this.dom.txtLeader.textContent = `Leader: ${info.leader} (Δ ${info.deltaTicks}t)`;
-      if (info.leader === 'Real Client') {
-        this.dom.txtLeader.style.color = '#d2a8ff';
-      } else {
-        this.dom.txtLeader.style.color = '#58a6ff';
-      }
+  copyDiagnostics() {
+    const metrics = this.reconciler?.metrics || {};
+    const configuredRtt = this.channel?.rttMs ?? 0;
+    const realMeasuredRtt = this.channel?.measuredRttMs ?? 0;
+    const extraLatency = Math.round(configuredRtt * 0.5);
+    const clientTick = metrics.clientTick ?? 0;
+    const serverTick = metrics.serverTick ?? 0;
+    const leadDelta = clientTick - serverTick;
+
+    const data = {
+      timestamp: new Date().toISOString(),
+      mode: this.headlessClient ? 'headless-simulation' : 'cross-tab-p2p',
+      clientTick,
+      serverTick,
+      leadTicks: metrics.leadTicks ?? 0,
+      tickLeadDelta: leadDelta,
+      measuredRttMs: Number(realMeasuredRtt.toFixed(2)),
+      configuredRttMs: configuredRtt,
+      simulatedExtraLatencyMs: extraLatency,
+      packetLossRate: this.channel?.packetLossRate ?? 0,
+      dropBurstCount: this.burstDropCount ?? 5,
+      serverReportRateHz: 120,
+      clientReportRateHz: 120,
+      correctionsTotal: metrics.totalCorrections ?? 0,
+      lastCorrectionErrorUU: Number((metrics.lastCorrectionDelta ?? 0).toFixed(4)),
+      maxCorrectionErrorUU: Number((metrics.maxCorrectionDelta ?? 0).toFixed(4)),
+      visualSmoothing: this.reconciler?.enableSmoothing ?? false,
+      redundantInputs: this.reconciler?.enableRedundantInputs ?? true,
+      packetsSent: this.channel?.stats?.packetsSent ?? this.channel?.stats?.clientPacketsSent ?? 0,
+      packetsDropped: this.channel?.stats?.packetsDropped ?? this.channel?.stats?.clientPacketsDropped ?? 0
+    };
+
+    const text = JSON.stringify(data, null, 2);
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(() => {
+        if (this.dom.btnCopyDiagnostics) {
+          const orig = this.dom.btnCopyDiagnostics.textContent;
+          this.dom.btnCopyDiagnostics.textContent = '✅ Copied!';
+          setTimeout(() => {
+            if (this.dom.btnCopyDiagnostics) this.dom.btnCopyDiagnostics.textContent = orig;
+          }, 1500);
+        }
+      }).catch(err => {
+        console.warn('[NetworkReconciliationHUD] Failed to copy diagnostics:', err);
+      });
     }
+    return data;
   }
 
   adjustLatency(direction) {
@@ -481,16 +567,19 @@ export class NetworkReconciliationHUD {
 
   adjustLatencyMs(deltaLatencyMs) {
     if (!this.channel) return;
-    const currentRtt = this.channel.rttMs ?? 80;
+    const currentRtt = this.channel.rttMs ?? 0;
     const currentLatency = Math.round(currentRtt * 0.5);
     const newLatency = Math.max(0, Math.min(500, currentLatency + deltaLatencyMs));
     const newRtt = newLatency * 2;
-    this.channel.setRtt(newRtt);
+    if (this.channel.setExtraLatency) {
+      this.channel.setExtraLatency(newLatency);
+    } else {
+      this.channel.setRtt(newRtt);
+    }
     if (this.reconciler) {
       this.reconciler.leadTicks = this.reconciler.calculateLeadTicks(newRtt);
     }
     this.syncLatencyValues();
-    this.updateLeaderInfo();
   }
 
   adjustRtt(deltaMs) {
@@ -498,26 +587,15 @@ export class NetworkReconciliationHUD {
   }
 
   syncLatencyValues() {
-    const realRtt = this.channel?.rttMs ?? 80;
-    const realLatency = Math.round(realRtt * 0.5);
+    const realRtt = this.channel?.rttMs ?? 0;
+    const extraLatency = Math.round(realRtt * 0.5);
     if (this.dom?.sliderRtt) {
-      this.dom.sliderRtt.value = realLatency;
-      this.dom.txtSliderRtt.textContent = `${realLatency}ms (RTT ${realRtt}ms)`;
+      this.dom.sliderRtt.value = extraLatency;
+      this.dom.txtSliderRtt.textContent = `+${extraLatency}ms (RTT ${realRtt}ms)`;
     }
     if (this.dom?.valRtt) {
-      this.dom.valRtt.textContent = `${realLatency} ms (RTT ${realRtt} ms)`;
-    }
-
-    if (this.headlessClient) {
-      const hRtt = this.headlessClient.rttMs ?? 80;
-      const hLatency = Math.round(hRtt * 0.5);
-      if (this.dom?.sliderHeadlessRtt) {
-        this.dom.sliderHeadlessRtt.value = hLatency;
-        this.dom.txtSliderHeadlessRtt.textContent = `${hLatency}ms (RTT ${hRtt}ms)`;
-      }
-      if (this.dom?.valHeadlessRtt) {
-        this.dom.valHeadlessRtt.textContent = `${hLatency} ms (RTT ${hRtt} ms)`;
-      }
+      const measured = this.channel?.measuredRttMs ? `${this.channel.measuredRttMs.toFixed(1)}ms` : `${realRtt}ms`;
+      this.dom.valRtt.textContent = `${measured} (+${extraLatency}ms extra)`;
     }
   }
 
@@ -532,8 +610,8 @@ export class NetworkReconciliationHUD {
       this.dom.badge.style.background = '#da3633';
       setTimeout(() => {
         if (this.dom?.badge) {
-          this.dom.badge.textContent = originalBadge || 'HEADLESS SYNC';
-          this.dom.badge.style.background = '#1f6feb';
+          this.dom.badge.textContent = originalBadge || '120Hz SYNC';
+          this.dom.badge.style.background = 'rgba(163, 113, 247, 0.25)';
         }
       }, 1200);
     }
@@ -600,21 +678,27 @@ export class NetworkReconciliationHUD {
   update(metrics) {
     if (!this.visible || this.minimized) return;
 
-    const realRtt = metrics.rttMs ?? (this.channel?.rttMs ?? 80);
-    const realLatency = Math.round(realRtt * 0.5);
-    this.dom.valRtt.textContent = `${realLatency} ms (RTT ${realRtt} ms)`;
+    const realRtt = metrics.rttMs ?? (this.channel?.rttMs ?? 0);
+    const measuredRtt = this.channel?.measuredRttMs ? this.channel.measuredRttMs.toFixed(1) : Math.round(realRtt * 0.5);
+    const extraLatency = Math.round(realRtt * 0.5);
+    this.dom.valRtt.textContent = `${measuredRtt} ms (+${extraLatency}ms extra)`;
     this.dom.valLoss.textContent = `${((this.channel?.packetLossRate ?? 0) * 100).toFixed(1)} %`;
-    this.dom.valTicks.textContent = `${metrics.clientTick ?? 0} / ${metrics.serverTick ?? 0}`;
+
+    const clientTick = metrics.clientTick ?? 0;
+    const serverTick = metrics.serverTick ?? 0;
+    const leadDelta = clientTick - serverTick;
+    const sign = leadDelta >= 0 ? '+' : '';
+    this.dom.valTicks.textContent = `${clientTick} / ${serverTick} (${sign}${leadDelta} ticks)`;
+
     this.dom.valLead.textContent = `${metrics.leadTicks ?? 0} ticks`;
     this.dom.valCorrections.textContent = `${metrics.totalCorrections ?? 0}`;
     this.dom.valLastError.textContent = `${(metrics.lastCorrectionDelta ?? 0).toFixed(2)} UU`;
     this.dom.valMaxError.textContent = `${(metrics.maxCorrectionDelta ?? 0).toFixed(2)} UU`;
 
     if (this.headlessClient) {
-      const hRtt = this.headlessClient.rttMs ?? 80;
+      const hRtt = this.headlessClient.rttMs ?? 0;
       const hLatency = Math.round(hRtt * 0.5);
       this.dom.valHeadlessRtt.textContent = `${hLatency} ms (RTT ${hRtt} ms)`;
-      this.dom.valHeadlessLead.textContent = `${this.headlessClient.leadTicks} ticks`;
     }
 
     if (this.reconciler?.enableSmoothing) {
@@ -624,8 +708,6 @@ export class NetworkReconciliationHUD {
       this.dom.valSmoothing.textContent = 'OFF (0.00)';
       this.dom.valSmoothing.className = 'net-cell-value';
     }
-
-    this.updateLeaderInfo();
   }
 
   destroy() {

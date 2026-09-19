@@ -663,20 +663,28 @@ export class PerformanceOverlayHUD {
     const currentScale = Math.round(
       (this.options?.getRenderScale?.()) ?? 50
     );
+    const phyRate = Math.round(this.options?.getPhysicsRate?.() ?? 120);
+    const rttMs = this.options?.getNetworkRtt?.();
+    const rttStr = (rttMs !== undefined && rttMs !== null && rttMs >= 0) ? `${Math.round(rttMs)}ms` : null;
 
     const s = this.settings;
     if (s.fps) {
       this.set('statFpsSimple', snap.frame.fps.toFixed(0));
       this.set('statHzSimple', String(Math.round(snap.refreshHz || 60)));
-      this.set('statScaleSimple', `${currentScale}%`);
+      let scaleText = `${currentScale}% · ${phyRate}Hz`;
+      if (rttStr) scaleText += ` · RTT ${rttStr}`;
+      this.set('statScaleSimple', scaleText);
     }
 
+    const phyBadge = `<span style="color:#58a6ff;margin-left:6px;font-weight:500;font-size:0.85em;">${phyRate}Hz</span>`;
+    const rttBadge = rttStr ? `<span style="color:#d2a8ff;margin-left:6px;font-weight:500;font-size:0.85em;">RTT ${rttStr}</span>` : '';
+
     if (s.fps && !s.frame) {
-      this.set('summaryFps', `${snap.frame.fps.toFixed(0)} <span style="color:rgba(255,255,255,0.45);font-weight:400;font-size:0.85em;">/ ${Math.round(snap.refreshHz || 60)}</span> <span style="color:rgba(255,255,255,0.75);margin-left:6px;font-weight:500;font-size:0.85em;">${currentScale}%</span>`);
+      this.set('summaryFps', `${snap.frame.fps.toFixed(0)} <span style="color:rgba(255,255,255,0.45);font-weight:400;font-size:0.85em;">/ ${Math.round(snap.refreshHz || 60)}</span> <span style="color:rgba(255,255,255,0.75);margin-left:6px;font-weight:500;font-size:0.85em;">${currentScale}%</span> ${phyBadge} ${rttBadge}`);
       const msSpan = this.root.querySelector('[data-el="summaryMs"]');
       if (msSpan?.parentElement) msSpan.parentElement.hidden = true;
     } else if (s.frame) {
-      this.set('summaryFps', `${snap.frame.fps.toFixed(0)} <span style="color:rgba(255,255,255,0.75);margin-left:4px;font-size:0.85em;">${currentScale}%</span>`);
+      this.set('summaryFps', `${snap.frame.fps.toFixed(0)} <span style="color:rgba(255,255,255,0.75);margin-left:4px;font-size:0.85em;">${currentScale}%</span> ${phyBadge} ${rttBadge}`);
       this.set('summaryMs', snap.frame.avgMs.toFixed(1));
       const msSpan = this.root.querySelector('[data-el="summaryMs"]');
       if (msSpan?.parentElement) msSpan.parentElement.hidden = false;

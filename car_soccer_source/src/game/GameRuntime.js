@@ -69,6 +69,8 @@ import { WebRTCChannel } from '../network/WebRTCChannel.js';
 import { HeadlessClient } from '../network/HeadlessClient.js';
 import { AsymmetricInputCoordinator } from '../network/AsymmetricInputCoordinator.js';
 import { NetworkReconciliationHUD } from '../ui/NetworkReconciliationHUD.js';
+import { OnlineDialog } from '../ui/OnlineDialog.js';
+import { P2PWebRTCChannel } from '../network/P2PWebRTCChannel.js';
 import {
   BoostBloom,
   FlipResetVisual,
@@ -407,6 +409,27 @@ export class GameRuntime {
 
     this.setupHudButtons();
 
+    this.onlineDialog = new OnlineDialog(this.container, {
+      onHostServer: async (opts) => {
+        await this.hostOnlineServer(opts);
+      },
+      onJoinServer: async (opts) => {
+        await this.joinOnlineServer(opts);
+      },
+      onPeerConnected: async (channel, name) => {
+        await this.onRemotePlayerConnected(channel, name);
+      },
+      onOpenNetworkHUD: () => {
+        if (this.networkHUD) {
+          this.networkHUD.toggle();
+        } else {
+          this.enableNetworkPrediction(true);
+        }
+      },
+      onClose: () => {
+        this.isCursorBrowsing = false;
+      }
+    });
     this.garageDialog = new GarageDialog(this.container, isOpen => this.handleOverlayChange('car', isOpen));
     this.matchDialog = new MatchDialog(this.container, {
       playerTeam: teamAssignment.playerTeam,
@@ -512,7 +535,9 @@ export class GameRuntime {
       statusCallbacks,
       isOpen => this.handleOverlayChange('status', isOpen),
       {
-        getRenderScale: () => this.activeGraphicsSettings?.renderScale ?? this.settingsSheet?.graphics?.renderScale ?? 50
+        getRenderScale: () => this.activeGraphicsSettings?.renderScale ?? this.settingsSheet?.graphics?.renderScale ?? 50,
+        getPhysicsRate: () => this.physicsRate,
+        getNetworkRtt: () => this.networkChannel?.measuredRttMs ?? (this.networkChannel?.rttMs > 0 ? this.networkChannel.rttMs : null)
       }
     );
 
@@ -587,6 +612,10 @@ export class GameRuntime {
     // 11. Prewarm visual shaders
     if (loadingLabel) loadingLabel.textContent = 'Warming up visual effects';
     if (loadingNote) loadingNote.textContent = 'Almost ready to play.';
+    if (this.physicsRateHUD) {
+      const netRtt = this.networkChannel?.measuredRttMs ?? (this.networkChannel?.rttMs > 0 ? this.networkChannel.rttMs : null);
+      this.physicsRateHUD.updateRateAndRtt(this.physicsRate, netRtt);
+    }
     this.arena.update(
       this.interpolator.prevState,
       this.interpolator.currState,
@@ -729,11 +758,13 @@ export class GameRuntime {
 
     const activeCar = this.playerCarIndex;
     const activeCarMesh = this.arena.cars[this.playerCarIndex];
-    if (this.networkReconciler && this.authoritativeServer) {
+    if (this.networkReconciler) {
       const now = performance.now();
-      // Server runs on dedicated decoupled 120Hz accumulator independent of render refresh rate
-      this.authoritativeServer.update(now);
-      this.headlessClient?.update?.(now) ?? this.headlessClient?.pollServerState(now);
+      if (this.authoritativeServer) {
+        // Server runs on dedicated decoupled 120Hz accumulator independent of render refresh rate
+        this.authoritativeServer.update(now);
+        this.headlessClient?.update?.(now) ?? this.headlessClient?.pollServerState(now);
+      }
       this.networkReconciler.reconcile(now);
       if (this.interpolator) {
         this.interpolator.currState.set(this.physics.state);
@@ -1141,9 +1172,9 @@ export class GameRuntime {
     if (!this.networkReconciler) {
       const useWebRTC = options.useWebRTC ?? true;
       this.networkChannel = useWebRTC
-        ? new WebRTCNetworkChannel({ rttMs: 80, jitterMs: 5, packetLossRate: 0.0, useBitPacking: options.useBitPacking ?? false })
-        : new NetworkChannel({ rttMs: 80, jitterMs: 5, packetLossRate: 0.0 });
-      this.authoritativeServer = new DedicatedServerWorkerClient(this.networkChannel, { snapshotInterval: 2 });
+        ? new WebRTCNetworkChannel({ rttMs: 0, jitterMs: 2, packetLossRate: 0.0, useBitPacking: options.useBitPacking ?? false })
+        : new NetworkChannel({ rttMs: 0, jitterMs: 2, packetLossRate: 0.0 });
+      this.authoritativeServer = new DedicatedServerWorkerClient(this.networkChannel, { snapshotInterval: 1 });
       await this.authoritativeServer.init();
 
       // Synchronize server arena configuration and unlimited boost with client physics
@@ -1180,6 +1211,109 @@ export class GameRuntime {
       this.networkHUD.show();
     }
     return this.networkReconciler;
+  }
+
+  /**
+   * Host an online multiplayer room using a dedicated 120Hz server Web Worker
+   * @param {object} [options]
+   * @param {string} [options.playerName='Host']
+   */
+  async hostOnlineServer(options = {}) {
+    const playerName = options.playerName || 'Host';
+    this.networkChannel = new WebRTCNetworkChannel({
+      rttMs: 0,
+      jitterMs: 1,
+      packetLossRate: 0.0,
+      useBitPacking: false
+    });
+
+    this.authoritativeServer = new DedicatedServerWorkerClient(this.networkChannel, { snapshotInterval: 1 });
+    await this.authoritativeServer.init();
+
+    this.authoritativeServer.sim.setUnlimitedBoost(this.physics.isUnlimitedBoost);
+    this.authoritativeServer.sim.restoreState(this.physics.saveState());
+
+    const serverSnap = this.authoritativeServer.sim.saveState();
+    const serverTick = Math.floor(this.authoritativeServer.sim.getHeaderView().tickCount);
+
+    this.networkReconciler = new PredictionReconciler(this.physics, this.networkChannel, {
+      localCarIndex: 0,
+      redundantHistoryCount: 10,
+      enableRedundantInputs: true,
+      useBitPacking: false
+    });
+    this.networkReconciler.syncTimeline(serverSnap, serverTick);
+
+    this.authoritativeServer.notifyPlayerJoined(0, playerName, 'host');
+
+    if (!this.networkHUD) {
+      this.networkHUD = new NetworkReconciliationHUD(
+        this.container,
+        this.networkReconciler,
+        this.networkChannel
+      );
+    }
+  }
+
+  /**
+   * Join an online multiplayer room as client Car 1 (Orange Team)
+   * @param {object} options
+   * @param {P2PWebRTCChannel} options.channel
+   * @param {string} [options.playerName='Player 2']
+   */
+  async joinOnlineServer(options = {}) {
+    const { channel, playerName = 'Player 2' } = options;
+    this.playerCarIndex = 1;
+    this.networkChannel = channel;
+
+    await this.arena.ensureOpponent();
+    if (this.arena.cars[1]) {
+      this.arena.cars[1].visible = true;
+    }
+    if (this.physics.numCars < 2) {
+      this.physics.addCar(1, 'default');
+    }
+
+    if (this.arena.cars[1]) {
+      this.flipResetVisual = new FlipResetVisual(this.arena.cars[1]);
+      this.camera.update(this.arena.cars[1], this.arena.ball, 0, this.cameraDynamics);
+    }
+
+    this.networkReconciler = new PredictionReconciler(this.physics, this.networkChannel, {
+      localCarIndex: 1,
+      redundantHistoryCount: 10,
+      enableRedundantInputs: true,
+      useBitPacking: false
+    });
+
+    if (!this.networkHUD) {
+      this.networkHUD = new NetworkReconciliationHUD(
+        this.container,
+        this.networkReconciler,
+        this.networkChannel
+      );
+    }
+  }
+
+  /**
+   * Callback when remote peer connects to host
+   */
+  async onRemotePlayerConnected(channel, remotePlayerName = 'Player 2') {
+    if (this.authoritativeServer) {
+      this.authoritativeServer.addClientChannel(channel);
+      this.authoritativeServer.ensureCar(1, 1);
+      this.authoritativeServer.notifyPlayerJoined(1, remotePlayerName, 'client');
+      await this.arena.ensureOpponent();
+      if (this.arena.cars[1]) {
+        this.arena.cars[1].visible = true;
+      }
+      if (this.physics.numCars < 2) {
+        this.physics.addCar(1, 'default');
+      }
+      if (this.networkHUD) {
+        this.networkHUD.setHeadlessClient(null, null);
+      }
+    }
   }
 
   /**
@@ -1853,6 +1987,36 @@ export class GameRuntime {
         if (!isEventWithinUI(evt.target) && evt.target.tagName !== "INPUT" && evt.target.tagName !== "TEXTAREA") {
           evt.preventDefault();
           this.adjustSimulatedLatency(1);
+          return;
+        }
+      }
+
+      // Escape key closes Network Controller HUD and Online Dialog cleanly
+      if (evt.code === 'Escape') {
+        if (this.networkHUD?.visible) {
+          evt.preventDefault();
+          this.networkHUD.hide();
+          return;
+        }
+        if (this.onlineDialog?.isOpen) {
+          evt.preventDefault();
+          this.onlineDialog.close();
+          return;
+        }
+      }
+
+      // Hotkey O: Toggle Online Dialog
+      if (
+        (evt.code === 'KeyO' || evt.key === 'o' || evt.key === 'O') &&
+        !evt.repeat &&
+        !evt.ctrlKey &&
+        !evt.metaKey &&
+        !evt.altKey &&
+        !evt.shiftKey
+      ) {
+        if (!isEventWithinUI(evt.target) && evt.target.tagName !== 'INPUT' && evt.target.tagName !== 'TEXTAREA') {
+          evt.preventDefault();
+          this.onlineDialog?.toggle();
           return;
         }
       }
