@@ -133,9 +133,10 @@ export class OnlineDialog {
             });
           } else if (data.type === 'room_answer' && this.view === 'host' && this.hostP2PChannel) {
             // Auto-accept room answer if token matches
-            if (data.answerToken && !this.hostP2PChannel.isOpen && this.hostP2PChannel.pc?.signalingState !== 'stable') {
+            const answerToken = data.answerToken || data.token;
+            if (answerToken && !this.hostP2PChannel.isOpen && this.hostP2PChannel.pc?.signalingState !== 'stable') {
               console.log('[OnlineDialog] Received auto-discovered room_answer via BroadcastChannel');
-              this.hostP2PChannel.acceptAnswerToken(data.answerToken).then(() => {
+              this.hostP2PChannel.acceptAnswerToken(answerToken).then(() => {
                 this._renderHostView();
               }).catch(err => {
                 console.warn('[OnlineDialog] Auto-accept answer failed:', err);

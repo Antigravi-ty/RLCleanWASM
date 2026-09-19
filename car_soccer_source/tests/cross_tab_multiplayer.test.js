@@ -776,3 +776,61 @@ test('NetworkReconciliationHUD: setSession dynamically updates active channel an
   assert.equal(hud.channel, mockChannel);
   assert.equal(hud.reconciler, mockReconciler);
 });
+
+
+test('Client Answer Token and Candidate Virtual IP Sanitization: guarantees 198.18/19 replacement on client return path', async () => {
+  const clientPayload = {
+    type: 'answer',
+    roomId: 'test_room_client_sanitize',
+    sdp: ['v=0', 'o=- 987654321 2 IN IP4 198.18.22.33', 'c=IN IP4 198.18.22.33', 'a=candidate:1 1 UDP 2122260223 198.18.22.33 54321 typ host'].join(String.fromCharCode(13, 10)),
+    candidates: [
+      { candidate: 'candidate:1 1 UDP 2122260223 198.18.22.33 54321 typ host', ip: '198.18.22.33', address: '198.18.22.33' },
+      { candidate: 'candidate:2 1 UDP 2122260223 198.19.0.1 54322 typ host', ip: '198.19.0.1', address: '198.19.0.1' }
+    ],
+    clientName: 'ClientPlayer',
+    clientColorSlot: 1,
+    clientColorHex: '#66bb6a',
+    version: 2
+  };
+
+  // 1. When encoded into Answer Token, it must be automatically sanitized
+  const encodedToken = 'RL_ANSWER_' + encodeSignalToken(clientPayload);
+  const decoded = decodeSignalToken(encodedToken);
+
+  assert.ok(!decoded.sdp.includes('198.18.22.33'), 'Encoded/Decoded Answer SDP must not have 198.18 IP');
+  assert.ok(decoded.sdp.includes('127.0.0.1'), 'Encoded/Decoded Answer SDP must have 127.0.0.1 replacement');
+
+  for (const cand of decoded.candidates) {
+    assert.equal(cand.ip, '127.0.0.1', 'Candidate IP in Answer Token must be sanitized to 127.0.0.1');
+    assert.equal(cand.address, '127.0.0.1', 'Candidate address in Answer Token must be sanitized to 127.0.0.1');
+    assert.ok(cand.candidate.includes('127.0.0.1'), 'Candidate string must contain 127.0.0.1');
+    assert.ok(!cand.candidate.includes('198.18'), 'Candidate string must not contain 198.18');
+    assert.ok(!cand.candidate.includes('198.19'), 'Candidate string must not contain 198.19');
+  }
+
+  // 2. Test Host acceptAnswerToken with this token
+  const hostChannel = new P2PWebRTCChannel({ role: 'host', roomId: 'test_room_client_sanitize' });
+  let addedCandidates = [];
+  hostChannel.addRemoteCandidate = async (c) => {
+    addedCandidates.push(c);
+  };
+
+  await hostChannel.acceptAnswerToken(encodedToken);
+  assert.equal(hostChannel.peerName, 'ClientPlayer');
+  assert.equal(hostChannel.peerColorSlot, 1);
+
+  // 3. Test addRemoteCandidate sanitizes trickle ICE candidate directly
+  const rawVirtualCand = {
+    candidate: 'candidate:9 1 UDP 2122260223 198.18.99.1 50000 typ host',
+    address: '198.18.99.1',
+    ip: '198.18.99.1'
+  };
+  const realHost = new P2PWebRTCChannel({ role: 'host' });
+  await realHost.addRemoteCandidate(rawVirtualCand);
+  assert.equal(realHost.pendingRemoteCandidates.length, 1);
+  assert.equal(realHost.pendingRemoteCandidates[0].address, '127.0.0.1');
+  assert.ok(realHost.pendingRemoteCandidates[0].candidate.includes('127.0.0.1'));
+
+  hostChannel.destroy();
+  realHost.destroy();
+});

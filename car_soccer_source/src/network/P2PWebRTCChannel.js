@@ -50,6 +50,14 @@ export function sanitizeCandidateIp(candidateOrSdp) {
 }
 
 export function encodeSignalToken(obj) {
+  if (obj && typeof obj === 'object') {
+    if (typeof obj.sdp === 'string') {
+      obj.sdp = sanitizeCandidateIp(obj.sdp);
+    }
+    if (Array.isArray(obj.candidates)) {
+      obj.candidates = obj.candidates.map(c => sanitizeCandidateIp(c));
+    }
+  }
   const json = JSON.stringify(obj);
   return btoa(
     encodeURIComponent(json).replace(/%([0-9A-F]{2})/g, (match, p1) =>
@@ -65,7 +73,16 @@ export function decodeSignalToken(tokenStr) {
   const json = decodeURIComponent(
     raw.split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')
   );
-  return JSON.parse(json);
+  const obj = JSON.parse(json);
+  if (obj && typeof obj === 'object') {
+    if (typeof obj.sdp === 'string') {
+      obj.sdp = sanitizeCandidateIp(obj.sdp);
+    }
+    if (Array.isArray(obj.candidates)) {
+      obj.candidates = obj.candidates.map(c => sanitizeCandidateIp(c));
+    }
+  }
+  return obj;
 }
 
 export class P2PWebRTCChannel {
@@ -301,16 +318,17 @@ export class P2PWebRTCChannel {
 
   async addRemoteCandidate(candJson) {
     if (!candJson) return;
+    const sanitized = sanitizeCandidateIp(candJson);
     if (this.pc && this.pc.remoteDescription && this.pc.remoteDescription.type) {
       try {
-        const c = typeof RTCIceCandidate !== "undefined" ? new RTCIceCandidate(candJson) : candJson;
+        const c = typeof RTCIceCandidate !== "undefined" ? new RTCIceCandidate(sanitized) : sanitized;
         await this.pc.addIceCandidate(c);
       } catch (err) {
         console.warn('[P2PWebRTCChannel] Failed to add ICE candidate:', err);
       }
     } else {
       if (!this.pendingRemoteCandidates) this.pendingRemoteCandidates = [];
-      this.pendingRemoteCandidates.push(candJson);
+      this.pendingRemoteCandidates.push(sanitized);
     }
   }
 
@@ -320,7 +338,8 @@ export class P2PWebRTCChannel {
     this.pendingRemoteCandidates = [];
     for (const cand of queued) {
       try {
-        const c = typeof RTCIceCandidate !== "undefined" ? new RTCIceCandidate(cand) : cand;
+        const sanitized = sanitizeCandidateIp(cand);
+        const c = typeof RTCIceCandidate !== "undefined" ? new RTCIceCandidate(sanitized) : sanitized;
         await this.pc.addIceCandidate(c);
       } catch (err) {
         console.warn('[P2PWebRTCChannel] Failed to add queued ICE candidate:', err);
@@ -485,8 +504,8 @@ export class P2PWebRTCChannel {
     const payload = {
       type: 'offer',
       roomId: this.roomId,
-      sdp,
-      candidates: this.localCandidates,
+      sdp: sanitizeCandidateIp(sdp),
+      candidates: (this.localCandidates || []).map(c => sanitizeCandidateIp(c)),
       hostName: this.playerName,
       hostColorSlot: this.localColorSlot,
       hostColorHex: this.localColorHex,
@@ -583,8 +602,8 @@ export class P2PWebRTCChannel {
     const payload = {
       type: 'answer',
       roomId: this.roomId,
-      sdp,
-      candidates: this.localCandidates,
+      sdp: sanitizeCandidateIp(sdp),
+      candidates: (this.localCandidates || []).map(c => sanitizeCandidateIp(c)),
       clientName: this.playerName,
       clientColorSlot: this.localColorSlot,
       clientColorHex: this.localColorHex,
@@ -595,6 +614,7 @@ export class P2PWebRTCChannel {
     console.log(`[P2PWebRTCChannel] ⚡ Client answer token created (${token.length} chars). Candidates: ${this.localCandidates.length}`);
     this.broadcastSignal('room_answer', {
       token,
+      answerToken: token,
       roomId: this.roomId,
       clientName: this.playerName,
       clientColorSlot: this.localColorSlot,
