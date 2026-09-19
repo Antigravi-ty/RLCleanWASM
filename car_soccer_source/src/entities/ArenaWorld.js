@@ -40,7 +40,9 @@ import {
   OCTANE_WHEEL_COORDS,
   REALISTIC_SUSPENSION_Z,
   FLAT_CAR_SUSPENSION_HEIGHTS,
-  FLAT_CAR_HITBOX_OFFSET
+  FLAT_CAR_HITBOX_OFFSET,
+  createCarPaintMaterial,
+  applyVehicleMaterials
 } from './VehicleAssembly.js';
 import { BoostPadSystem } from './BoostPadSystem.js';
 import { loadStadiumContinuousBoundary, loadStadiumArchitecture } from './StadiumArena.js';
@@ -958,6 +960,17 @@ export class ArenaWorld {
       this.scene.background = new Color(visible ? 4679561 : 0);
       this.markRenderTreeChanged();
     }
+  }
+
+
+  setCarColor(carIndex, colorVal) {
+    const carRoot = this.cars[carIndex];
+    if (!carRoot) return;
+    const num = typeof colorVal === "string" ? parseInt(colorVal.replace("#", ""), 16) : colorVal;
+    const palette = createCarPaintMaterial(num, undefined, resolveContext);
+    applyVehicleMaterials(carRoot, palette, resolveContext);
+    if (!this.carColors) this.carColors = [];
+    this.carColors[carIndex] = num;
   }
 
   async ensureOpponent() {

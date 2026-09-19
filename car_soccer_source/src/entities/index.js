@@ -12,6 +12,7 @@ export * from "./ArenaWorld.js";
 export * from "./StadiumArena.js";
 export * from "./VehicleAssembly.js";
 export * from "./VehicleBoostEmitter.js";
+export * from "./CarColorConstants.js";
 
 // Explicit disambiguation for star-exported symbols shared across submodules
 // Resolves esbuild / Vite "Ambiguous import has multiple matching exports"
