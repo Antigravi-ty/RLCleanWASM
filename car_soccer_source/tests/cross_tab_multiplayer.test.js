@@ -485,3 +485,193 @@ test('OnlineDialog: Join view color slots are not pre-occupied until room offer 
     globalThis.document = origDoc;
   }
 });
+
+test('Cross-Tab Native Transport: Direct room channel handshake and packet delivery without ICE', async () => {
+  const roomId = 'test_room_' + Date.now().toString(36);
+  const hostChannel = new P2PWebRTCChannel({
+    role: 'host',
+    playerName: 'HostStriker',
+    roomId,
+    colorSlot: 5,
+    colorHex: '#9c27b0'
+  });
+
+  const clientChannel = new P2PWebRTCChannel({
+    role: 'client',
+    playerName: 'GuestStriker',
+    roomId,
+    colorSlot: 1,
+    colorHex: '#66bb6a'
+  });
+
+  let hostConnected = false;
+  let clientConnected = false;
+  hostChannel.onConnected = () => { hostConnected = true; };
+  clientChannel.onConnected = () => { clientConnected = true; };
+
+  // Host creates offer token
+  const offerToken = await hostChannel.createOfferToken({ roomId, hostColorSlot: 5 });
+  assert.ok(offerToken.startsWith('RL_OFFER_'));
+  const offerData = decodeSignalToken(offerToken);
+  assert.equal(offerData.roomId, roomId);
+  assert.equal(offerData.hostColorSlot, 5);
+
+  // Client accepts offer and generates answer
+  const answerToken = await clientChannel.acceptOfferAndCreateAnswer(offerToken, { clientColorSlot: 1 });
+  assert.ok(answerToken.startsWith('RL_ANSWER_'));
+  const answerData = decodeSignalToken(answerToken);
+  assert.equal(answerData.roomId, roomId);
+  assert.equal(answerData.clientColorSlot, 1);
+
+  // Host accepts answer
+  await hostChannel.acceptAnswerToken(answerToken);
+
+  // Wait for microtasks / broadcast delivery
+  await new Promise(r => setTimeout(r, 80));
+
+  assert.equal(hostChannel.isOpen, true, 'Host channel should be open');
+  assert.equal(clientChannel.isOpen, true, 'Client channel should be open');
+  assert.equal(hostChannel.isCrossTab, true, 'Host channel should be flagged as cross-tab');
+  assert.equal(clientChannel.isCrossTab, true, 'Client channel should be flagged as cross-tab');
+  assert.equal(hostChannel.peerName, 'GuestStriker');
+  assert.equal(clientChannel.peerName, 'HostStriker');
+
+  // Transmit client input packet over cross-tab channel
+  let receivedInput = null;
+  hostChannel.onPacketReceived = (pkt) => { receivedInput = pkt; };
+  const sampleInput = {
+    carIndex: 1,
+    tick: 100,
+    history: [{ tick: 100, controls: { throttle: 1, steer: -0.5, jump: true } }]
+  };
+  clientChannel.sendClientInput(sampleInput);
+
+  // Transmit server state packet over cross-tab channel
+  let receivedSnapshot = null;
+  clientChannel.onPacketReceived = (pkt) => { receivedSnapshot = pkt; };
+  const sampleSnapshot = {
+    serverTick: 100,
+    timestamp: 1000.0,
+    lastReceivedClientTimestamp: 990.0,
+    acknowledgedControls: [],
+    stateSnapshot: new Float32Array([1.0, 2.0, 3.0])
+  };
+  hostChannel.sendServerState(sampleSnapshot);
+
+  await new Promise(r => setTimeout(r, 80));
+
+  assert.ok(receivedInput !== null, 'Host should receive client input packet');
+  assert.equal(receivedInput.targetTick, 100);
+  assert.ok(receivedSnapshot !== null, 'Client should receive server snapshot packet');
+  assert.equal(receivedSnapshot.serverTick, 100);
+
+  hostChannel.destroy();
+  clientChannel.destroy();
+});
+
+test('P2PWebRTCChannel: WebRTC ICE failure does not disconnect when Cross-Tab transport is active', async () => {
+  const roomId = 'test_ice_' + Date.now().toString(36);
+  const host = new P2PWebRTCChannel({ role: 'host', roomId });
+  const client = new P2PWebRTCChannel({ role: 'client', roomId });
+
+  const offer = await host.createOfferToken({ roomId });
+  const answer = await client.acceptOfferAndCreateAnswer(offer);
+  await host.acceptAnswerToken(answer);
+
+  await new Promise(r => setTimeout(r, 60));
+  assert.equal(host.isOpen, true);
+  assert.equal(host.isCrossTab, true);
+
+  let hostDisconnected = false;
+  host.onDisconnected = () => { hostDisconnected = true; };
+
+  // Simulate WebRTC peerconnection ice failure
+  if (host.pc?.oniceconnectionstatechange) {
+    Object.defineProperty(host.pc, 'iceConnectionState', { value: 'failed', configurable: true });
+    host.pc.oniceconnectionstatechange();
+  }
+  if (host.pc?.onconnectionstatechange) {
+    Object.defineProperty(host.pc, 'connectionState', { value: 'failed', configurable: true });
+    host.pc.onconnectionstatechange();
+  }
+
+  // Cross-tab channel should protect connection from dropping
+  assert.equal(host.isOpen, true, 'Connection should remain open via active Cross-Tab transport');
+  assert.equal(hostDisconnected, false, 'onDisconnected should NOT be called on ICE failure when Cross-Tab active');
+
+  host.destroy();
+  client.destroy();
+});
+
+test('OnlineDialog: Prevents duplicate servers, supports stopHosting(), and synchronizes dynamic color updates', async () => {
+  const origDoc = globalThis.document;
+  try {
+    const makeElement = () => ({
+      style: {},
+      textContent: '',
+      innerHTML: '',
+      setAttribute: () => {},
+      removeAttribute: () => {},
+      addEventListener: () => {},
+      appendChild: () => {},
+      removeChild: () => {},
+      classList: { add: () => {}, remove: () => {}, contains: () => false },
+      querySelector: () => makeElement(),
+      querySelectorAll: () => []
+    });
+    const rootEl = makeElement();
+    globalThis.document = {
+      getElementById: () => null,
+      createElement: () => makeElement(),
+      head: { appendChild: () => {} }
+    };
+
+    let serverHosted = false;
+    let serverStopped = false;
+
+    const dialog = new OnlineDialog(rootEl, {
+      onHostServer: async () => { serverHosted = true; },
+      onStopServer: async () => { serverStopped = true; },
+      onColorSelect: () => {}
+    });
+
+    // Initial state
+    assert.equal(dialog.isHosting, false);
+    assert.equal(dialog.view, 'lobby');
+
+    // Start hosting
+    await dialog._startHosting();
+    assert.equal(serverHosted, true);
+    assert.equal(dialog.isHosting, true);
+    assert.equal(dialog.view, 'host');
+    assert.ok(dialog.offerToken.startsWith('RL_OFFER_'));
+
+    // Host updates car color to Purple (slot 5)
+    dialog.hostColorSlot = 5;
+    dialog.hostColorHex = '#9c27b0';
+    const updatedOffer = dialog.hostP2PChannel.updateOfferTokenColor(5, '#9c27b0');
+    dialog.offerToken = updatedOffer;
+    const decodedOffer = decodeSignalToken(updatedOffer);
+    assert.equal(decodedOffer.hostColorSlot, 5, 'Offer token must dynamically reflect Purple color');
+
+    // Close modal
+    dialog.close();
+    assert.equal(dialog.isOpen, false);
+    assert.equal(dialog.isHosting, true, 'Server must remain active while modal is closed');
+
+    // Reopen modal without arguments: must resume 'host' view instead of restarting server
+    dialog.open();
+    assert.equal(dialog.view, 'host', 'Reopening modal must return to host view without creating duplicate server');
+
+    // Calling stopHosting() must stop server and return to lobby
+    await dialog.stopHosting();
+    assert.equal(serverStopped, true, 'onStopServer callback should have been invoked');
+    assert.equal(dialog.isHosting, false);
+    assert.equal(dialog.view, 'lobby');
+    assert.equal(dialog.offerToken, '');
+
+    dialog.destroy();
+  } finally {
+    globalThis.document = origDoc;
+  }
+});
