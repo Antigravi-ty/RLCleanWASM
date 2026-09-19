@@ -63,6 +63,7 @@ import { DeterminismHUD } from '../ui/DeterminismHUD.js';
 import { NetworkChannel } from '../network/NetworkChannel.js';
 import { WebRTCNetworkChannel } from '../network/WebRTCNetworkChannel.js';
 import { PredictionReconciler } from '../network/PredictionReconciler.js';
+import { DedicatedServerWorkerClient } from '../network/DedicatedServerWorkerClient.js';
 import { AuthoritativeServer } from '../network/AuthoritativeServer.js';
 import { WebRTCChannel } from '../network/WebRTCChannel.js';
 import { HeadlessClient } from '../network/HeadlessClient.js';
@@ -1142,7 +1143,7 @@ export class GameRuntime {
       this.networkChannel = useWebRTC
         ? new WebRTCNetworkChannel({ rttMs: 80, jitterMs: 5, packetLossRate: 0.0, useBitPacking: options.useBitPacking ?? false })
         : new NetworkChannel({ rttMs: 80, jitterMs: 5, packetLossRate: 0.0 });
-      this.authoritativeServer = new AuthoritativeServer(this.networkChannel, { snapshotInterval: 2 });
+      this.authoritativeServer = new DedicatedServerWorkerClient(this.networkChannel, { snapshotInterval: 2 });
       await this.authoritativeServer.init();
 
       // Synchronize server arena configuration and unlimited boost with client physics

@@ -3,6 +3,9 @@ import { resolve } from 'path';
 import { existsSync, createReadStream } from 'fs';
 
 export default defineConfig({
+  worker: {
+    format: 'es'
+  },
   root: '.',
   publicDir: resolve(__dirname, '../public'),
   server: {
