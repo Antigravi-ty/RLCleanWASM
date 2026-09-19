@@ -566,8 +566,8 @@ export class OnlineDialog {
       if (typeof this.root.setAttribute === 'function') this.root.setAttribute('aria-hidden', 'true');
       this.isOpen = false;
     }
-    this.callbacks.onOpenChange?.(false);
     this.callbacks.onClose?.();
+    this.callbacks.onOpenChange?.(false);
   }
 
   toggle() {
@@ -733,10 +733,10 @@ export class OnlineDialog {
     });
   }
 
-  _renderColorPickerHtml(selectedSlotId, occupiedSlotId, role = 'host') {
+  _renderColorPickerHtml(selectedSlotId, occupiedSlotId = null, role = 'host') {
     const swatchesHtml = CAR_COLOR_SLOTS.map(slot => {
       const isSelected = slot.id === selectedSlotId;
-      const isOccupied = slot.id === occupiedSlotId;
+      const isOccupied = occupiedSlotId !== null && occupiedSlotId !== undefined && slot.id === occupiedSlotId;
       const teamTag = slot.team === 0 ? '蓝队' : '红/橙队';
 
       return `
@@ -903,8 +903,8 @@ export class OnlineDialog {
     this.dom.badge.style.color = '#d2a8ff';
 
     const isConnected = this.hostP2PChannel?.isOpen;
-    const opponentColorSlot = this.hostP2PChannel?.peerColorSlot ?? this.clientColorSlot;
-    const opponentColor = getCarColorSlotById(opponentColorSlot);
+    const opponentColorSlot = isConnected ? (this.hostP2PChannel?.peerColorSlot ?? null) : null;
+    const opponentColor = opponentColorSlot !== null ? getCarColorSlotById(opponentColorSlot) : getCarColorSlotById(this.clientColorSlot);
     const myColor = getCarColorSlotById(this.hostColorSlot);
 
     this.dom.content.innerHTML = `
@@ -1047,8 +1047,9 @@ export class OnlineDialog {
     this.dom.badge.style.color = '#58a6ff';
 
     const isConnected = this.clientP2PChannel?.isOpen;
-    const hostColorSlot = this.clientP2PChannel?.peerColorSlot ?? this.detectedLocalHost?.colorSlot ?? this.hostColorSlot;
-    const hostColor = getCarColorSlotById(hostColorSlot);
+    const hasHostColor = isConnected || (this.clientP2PChannel?.peerColorSlot !== undefined && this.clientP2PChannel?.peerColorSlot !== null);
+    const hostColorSlot = hasHostColor ? this.clientP2PChannel.peerColorSlot : null;
+    const hostColor = hostColorSlot !== null ? getCarColorSlotById(hostColorSlot) : null;
     const myColor = getCarColorSlotById(this.clientColorSlot);
 
     this.dom.content.innerHTML = `
@@ -1077,7 +1078,7 @@ export class OnlineDialog {
         <div style="background:rgba(56,139,253,0.1);border:1px solid rgba(56,139,253,0.3);padding:10px;border-radius:6px;">
           <div style="display:flex;align-items:center;justify-content:space-between;">
             <div style="font-size:10px;font-weight:700;color:#58a6ff;text-transform:uppercase;">Host (Car 0)</div>
-            <div style="width:12px;height:12px;border-radius:50%;background:${hostColor.hex};border:1px solid #fff;"></div>
+            <div style="width:12px;height:12px;border-radius:50%;background:${hostColor ? hostColor.hex : '#58a6ff'};border:1px solid #fff;"></div>
           </div>
           <div style="font-size:14px;font-weight:700;color:#ffffff;margin-top:2px;">
             ${this.clientP2PChannel?.peerName || this.detectedLocalHost?.hostName || 'Host'}
@@ -1210,6 +1211,16 @@ export class OnlineDialog {
         clientColorSlot: this.clientColorSlot,
         clientColorHex: this.clientColorHex
       });
+
+      if (this.clientP2PChannel.peerColorSlot !== undefined && this.clientP2PChannel.peerColorSlot === this.clientColorSlot) {
+        const altSlot = CAR_COLOR_SLOTS.find(s => s.id !== this.clientP2PChannel.peerColorSlot) || CAR_COLOR_SLOTS[0];
+        this.clientColorSlot = altSlot.id;
+        this.clientColorHex = altSlot.hex;
+        this.callbacks.onColorSelect?.(1, altSlot.id, altSlot.hex);
+        if (this.clientP2PChannel.isOpen) {
+          this.clientP2PChannel.sendColorChange(altSlot.id, altSlot.hex, 1);
+        }
+      }
 
       // Auto-broadcast room answer for instant local tab pairing
       if (this.discoveryChannel) {

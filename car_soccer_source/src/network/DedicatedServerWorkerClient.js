@@ -147,6 +147,14 @@ export class DedicatedServerWorkerClient {
       }
       return sent;
     };
+
+    const prevOnPacket = channel.onPacketReceived;
+    channel.onPacketReceived = (packet) => {
+      prevOnPacket?.(packet);
+      if (this.isWorker && this.worker && packet) {
+        this._postCommand('clientInput', { channelId, packet });
+      }
+    };
   }
 
   addClientChannel(channel) {
@@ -155,8 +163,8 @@ export class DedicatedServerWorkerClient {
       this.channels.push(channel);
       this.channelMap.set(channel, channelId);
 
+      this._bindChannel(channel, channelId);
       if (this.isWorker) {
-        this._bindChannel(channel, channelId);
         if (this.worker) {
           this._postCommand('registerChannel', { channelId });
         }
@@ -323,7 +331,18 @@ export class DedicatedServerWorkerClient {
    */
   update(nowMs = performance.now()) {
     if (!this.active) return;
-    if (!this.isWorker && this.fallbackServer) {
+    if (this.isWorker && this.worker) {
+      for (const [ch, channelId] of this.channelMap.entries()) {
+        if (typeof ch.receiveServerPackets === 'function') {
+          const packets = ch.receiveServerPackets(nowMs);
+          if (Array.isArray(packets)) {
+            for (const packet of packets) {
+              this._postCommand('clientInput', { channelId, packet });
+            }
+          }
+        }
+      }
+    } else if (this.fallbackServer) {
       this.fallbackServer.update(nowMs);
     }
   }
@@ -332,7 +351,7 @@ export class DedicatedServerWorkerClient {
     this.active = false;
     if (this.isWorker && this.worker) {
       this._postCommand('destroy', {});
-      this.worker.terminate();
+      try { this.worker?.terminate?.(); } catch (_) {}
       this.worker = null;
     } else if (this.fallbackServer) {
       this.fallbackServer.destroy();

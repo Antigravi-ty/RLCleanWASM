@@ -434,6 +434,10 @@ export class GameRuntime {
       },
       onClose: () => {
         this.isCursorBrowsing = false;
+        if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
+          document.activeElement.blur();
+        }
+        this.syncPausedAndInputState();
       }
     });
     this.garageDialog = new GarageDialog(this.container, isOpen => this.handleOverlayChange('car', isOpen));
@@ -785,14 +789,22 @@ export class GameRuntime {
       this.match.state.mode === 'freeplay' ||
       (!this.match.state.paused && this.match.state.phase === 'playing');
 
+    const car0Controls = this.playerCarIndex === 0
+      ? this.playerControls
+      : (this.networkReconciler?.lastRemoteControls?.get(0) || this.neutralControls);
+    const car0Throttle = this.playerCarIndex === 0 ? this.playerThrottle : (car0Controls?.throttle ?? 0);
+    const car1Controls = this.playerCarIndex === 1
+      ? this.playerControls
+      : (this.networkReconciler?.lastRemoteControls?.get(1) || this.botControls);
+
     this.arena.update(
       this.interpolator.prevState,
       this.interpolator.currState,
       this.interpolator.alpha,
       dt,
-      this.playerThrottle,
-      this.playerControls,
-      this.botControls,
+      car0Throttle,
+      car0Controls,
+      car1Controls,
       isMatchActive
     );
 
@@ -1244,11 +1256,15 @@ export class GameRuntime {
       useBitPacking: false
     });
 
-    this.authoritativeServer = new DedicatedServerWorkerClient(this.networkChannel, { snapshotInterval: 1 });
+    const initialSnapshot = this.physics.saveState();
+    this.authoritativeServer = new DedicatedServerWorkerClient(this.networkChannel, {
+      snapshotInterval: 1,
+      initialState: Array.from(initialSnapshot)
+    });
     await this.authoritativeServer.init();
 
     this.authoritativeServer.sim.setUnlimitedBoost(this.physics.isUnlimitedBoost);
-    this.authoritativeServer.sim.restoreState(this.physics.saveState());
+    await this.authoritativeServer.sim.restoreState(initialSnapshot);
 
     const serverSnap = this.authoritativeServer.sim.saveState();
     const serverTick = Math.floor(this.authoritativeServer.sim.getHeaderView().tickCount);
@@ -1706,6 +1722,9 @@ export class GameRuntime {
       if (name !== 'status' && this.overlayHUD) this.overlayHUD.hideDetails(false);
     } else {
       this.openOverlays.delete(name);
+      if (this.openOverlays.size === 0) {
+        this.isCursorBrowsing = false;
+      }
       this.gamepadSettingsJustClosed = true;
     }
     this.syncPausedAndInputState();

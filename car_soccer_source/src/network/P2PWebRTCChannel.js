@@ -49,13 +49,14 @@ export class P2PWebRTCChannel {
     this.jitterMs = options.jitterMs ?? 2;
     this.packetLossRate = options.packetLossRate ?? 0.0;
     this.playerName = options.playerName ?? 'Player';
-    this.signalingChannelName = options.signalingChannelName ?? 'car_soccer_online_p2p';
+    this.signalingChannelName = options.signalingChannelName ?? 'car_soccer_online_discovery';
 
     this.isOpen = false;
     this.pc = null;
     this.dataChannel = null;
     this.localCandidates = [];
     this.gatheringPromise = null;
+    this.pendingRemoteCandidates = [];
 
     // Simulation delivery queues
     this.inboundQueue = [];  // Packets received from peer, queued for deliverAt
@@ -103,17 +104,51 @@ export class P2PWebRTCChannel {
     if (this.onBroadcastSignal) {
       this.onBroadcastSignal(msg);
     }
+    if (msg.type === 'ice_candidate' && msg.candidate && msg.senderRole !== this.role) {
+      this.addRemoteCandidate(msg.candidate);
+    }
+  }
+
+  async addRemoteCandidate(candJson) {
+    if (!candJson) return;
+    if (this.pc && this.pc.remoteDescription && this.pc.remoteDescription.type) {
+      try {
+        const c = typeof RTCIceCandidate !== "undefined" ? new RTCIceCandidate(candJson) : candJson;
+        await this.pc.addIceCandidate(c);
+      } catch (err) {
+        console.warn('[P2PWebRTCChannel] Failed to add ICE candidate:', err);
+      }
+    } else {
+      if (!this.pendingRemoteCandidates) this.pendingRemoteCandidates = [];
+      this.pendingRemoteCandidates.push(candJson);
+    }
+  }
+
+  async flushPendingCandidates() {
+    if (!this.pc || !this.pendingRemoteCandidates || this.pendingRemoteCandidates.length === 0) return;
+    const queued = this.pendingRemoteCandidates;
+    this.pendingRemoteCandidates = [];
+    for (const cand of queued) {
+      try {
+        const c = typeof RTCIceCandidate !== "undefined" ? new RTCIceCandidate(cand) : cand;
+        await this.pc.addIceCandidate(c);
+      } catch (err) {
+        console.warn('[P2PWebRTCChannel] Failed to add queued ICE candidate:', err);
+      }
+    }
   }
 
   broadcastSignal(type, payload = {}) {
     if (this.broadcastChannel) {
-      this.broadcastChannel.postMessage({
-        type,
-        senderRole: this.role,
-        senderName: this.playerName,
-        timestamp: Date.now(),
-        ...payload
-      });
+      try {
+        this.broadcastChannel.postMessage({
+          type,
+          senderRole: this.role,
+          senderName: this.playerName,
+          timestamp: Date.now(),
+          ...payload
+        });
+      } catch (_) {}
     }
   }
 
@@ -135,54 +170,70 @@ export class P2PWebRTCChannel {
 
     this.pc = new RTCPeerConnection(config);
     this.localCandidates = [];
+    this.pendingRemoteCandidates = [];
 
     this.pc.onicecandidate = (event) => {
       if (event.candidate) {
-        this.localCandidates.push(event.candidate.toJSON());
+        const candJson = event.candidate.toJSON();
+        this.localCandidates.push(candJson);
+        this.broadcastSignal('ice_candidate', { candidate: candJson });
       }
     };
 
     this.pc.oniceconnectionstatechange = () => {
       console.log(`[P2PWebRTCChannel] ICE Connection State: ${this.pc.iceConnectionState}`);
-    };
-
-    this.pc.onconnectionstatechange = () => {
-      console.log(`[P2PWebRTCChannel] Connection State: ${this.pc.connectionState}`);
-      if (this.pc.connectionState === "connected") {
-        this.isOpen = true;
-      } else if (this.pc.connectionState === "disconnected" || this.pc.connectionState === "failed") {
-        this.isOpen = false;
-        this.onDisconnected?.();
-      }
-    };
-
-    this.pc.oniceconnectionstatechange = () => {
       if (this.pc.iceConnectionState === 'disconnected' || this.pc.iceConnectionState === 'failed') {
         this.isOpen = false;
         this.onDisconnected?.();
       }
     };
 
-    this.gatheringPromise = new Promise((resolve) => {
-      if (this.pc.iceGatheringState === 'complete') {
-        resolve();
-        return;
+    this.pc.onconnectionstatechange = () => {
+      console.log(`[P2PWebRTCChannel] Connection State: ${this.pc.connectionState}`);
+      if (this.pc.connectionState === 'connected') {
+        this.isOpen = true;
+      } else if (this.pc.connectionState === 'disconnected' || this.pc.connectionState === 'failed') {
+        this.isOpen = false;
+        this.onDisconnected?.();
       }
+    };
+
+    return this.pc;
+  }
+
+  _waitForIceGathering(timeoutMs = 1500) {
+    if (!this.pc || this.pc.iceGatheringState === 'complete') {
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      let timeoutId;
+      const cleanup = () => {
+        if (timeoutId) clearTimeout(timeoutId);
+        if (this.pc) {
+          this.pc.removeEventListener('icegatheringstatechange', onStateChange);
+          this.pc.removeEventListener('icecandidate', onCandidate);
+        }
+      };
       const onStateChange = () => {
         if (this.pc && this.pc.iceGatheringState === 'complete') {
-          this.pc.removeEventListener('icegatheringstatechange', onStateChange);
+          cleanup();
+          resolve();
+        }
+      };
+      const onCandidate = (event) => {
+        if (!event.candidate) {
+          cleanup();
           resolve();
         }
       };
       this.pc.addEventListener('icegatheringstatechange', onStateChange);
-      // Failsafe timeout: resolve after 600ms so token is generated even if remote STUN is slow
-      setTimeout(() => {
-        if (this.pc) this.pc.removeEventListener('icegatheringstatechange', onStateChange);
-        resolve();
-      }, 600);
-    });
+      this.pc.addEventListener('icecandidate', onCandidate);
 
-    return this.pc;
+      timeoutId = setTimeout(() => {
+        cleanup();
+        resolve();
+      }, timeoutMs);
+    });
   }
 
   /**
@@ -206,7 +257,7 @@ export class P2PWebRTCChannel {
     const offer = await this.pc.createOffer();
     await this.pc.setLocalDescription(offer);
 
-    await this.gatheringPromise;
+    await this._waitForIceGathering(1500);
 
     const payload = {
       type: 'offer',
@@ -263,18 +314,19 @@ export class P2PWebRTCChannel {
       type: 'offer',
       sdp: offerData.sdp
     }));
+    await this.flushPendingCandidates();
 
     // Ingest any bundled candidates
     if (Array.isArray(offerData.candidates)) {
       for (const cand of offerData.candidates) {
-        try { await this.pc.addIceCandidate(new RTCIceCandidate(cand)); } catch (_) {}
+        await this.addRemoteCandidate(cand);
       }
     }
 
     const answer = await this.pc.createAnswer();
     await this.pc.setLocalDescription(answer);
 
-    await this.gatheringPromise;
+    await this._waitForIceGathering(1500);
 
     const payload = {
       type: 'answer',
@@ -324,10 +376,11 @@ export class P2PWebRTCChannel {
       sdp: answerData.sdp
     }));
     console.log('[P2PWebRTCChannel] Remote answer SDP applied. Signaling state:', this.pc.signalingState);
+    await this.flushPendingCandidates();
 
     if (Array.isArray(answerData.candidates)) {
       for (const cand of answerData.candidates) {
-        try { await this.pc.addIceCandidate(new RTCIceCandidate(cand)); } catch (_) {}
+        await this.addRemoteCandidate(cand);
       }
     }
   }

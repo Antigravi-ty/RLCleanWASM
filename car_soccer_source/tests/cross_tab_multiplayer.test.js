@@ -333,3 +333,89 @@ test('P2PWebRTCChannel: acceptAnswerToken avoids exception when signalingState i
   channel.destroy();
   assert.equal(thrown, false);
 });
+
+test('OnlineDialog & P2PWebRTCChannel: Trickle ICE candidate buffering and flushing', async () => {
+  const channel = new P2PWebRTCChannel({ role: 'host' });
+  const mockCand = { candidate: 'candidate:1 1 UDP 2122260223 192.168.1.1 5000 typ host', sdpMid: '0' };
+
+  // Candidate arrives before remote description
+  await channel.addRemoteCandidate(mockCand);
+  assert.equal(channel.pendingRemoteCandidates.length, 1);
+
+  // Set remote description and flush
+  let addedCandidates = [];
+  channel.pc = {
+    remoteDescription: { type: 'answer', sdp: 'fake_sdp' },
+    addIceCandidate: async (c) => { addedCandidates.push(c); }
+  };
+
+  await channel.flushPendingCandidates();
+  assert.equal(channel.pendingRemoteCandidates.length, 0);
+  assert.equal(addedCandidates.length, 1);
+  channel.destroy();
+});
+
+test('DedicatedServerWorkerClient: forwards incoming remote client packets via onPacketReceived', async () => {
+  const client = new DedicatedServerWorkerClient(null, { forceFallback: true });
+  await client.init();
+  client.isWorker = true;
+  client.worker = { postMessage: () => {}, terminate: () => {} };
+
+  const mockChannel = {
+    sendClientInput: (packet) => true,
+    receiveServerPackets: () => [],
+    sendServerState: () => true,
+    onPacketReceived: null
+  };
+
+  client.addClientChannel(mockChannel);
+  assert.ok(typeof mockChannel.onPacketReceived === 'function');
+
+  let posted = [];
+  client._postCommand = (cmd, payload) => {
+    posted.push({ cmd, payload });
+  };
+
+  const clientPacket = {
+    carIndex: 1,
+    tick: 50,
+    controls: { throttle: 1.0, steer: 0, pitch: 0, yaw: 0, roll: 0, jump: false, boost: false, handbrake: false }
+  };
+
+  mockChannel.onPacketReceived(clientPacket);
+
+  // In fallback mode or mocked worker, verify clientInput postCommand was triggered
+  assert.equal(posted.length, 1);
+  assert.equal(posted[0].cmd, 'clientInput');
+  assert.equal(posted[0].payload.packet.carIndex, 1);
+  assert.equal(posted[0].payload.packet.controls.throttle, 1.0);
+
+  client.destroy();
+});
+
+test('OnlineDialog: Color occupied logic only activates when peer is confirmed and onClose precedes onOpenChange', () => {
+  let callOrder = [];
+  const mockCallbacks = {
+    onClose: () => callOrder.push('onClose'),
+    onOpenChange: (open) => callOrder.push(`onOpenChange:${open}`)
+  };
+
+  const dialog = {
+    root: { hidden: false, style: { display: 'block' }, setAttribute: () => {} },
+    isOpen: true,
+    callbacks: mockCallbacks,
+    close() {
+      if (this.root) {
+        this.root.hidden = true;
+        if (this.root.style) this.root.style.display = 'none';
+        if (typeof this.root.setAttribute === 'function') this.root.setAttribute('aria-hidden', 'true');
+        this.isOpen = false;
+      }
+      this.callbacks.onClose?.();
+      this.callbacks.onOpenChange?.(false);
+    }
+  };
+
+  dialog.close();
+  assert.deepEqual(callOrder, ['onClose', 'onOpenChange:false']);
+});

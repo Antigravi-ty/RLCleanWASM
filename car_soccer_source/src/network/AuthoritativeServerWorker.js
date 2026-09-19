@@ -134,6 +134,13 @@ self.onmessage = async (event) => {
           }
         }
 
+        if (options.initialState) {
+          const initSnap = options.initialState instanceof Float32Array
+            ? options.initialState
+            : new Float32Array(options.initialState);
+          server.sim.restoreState(initSnap);
+        }
+
         startAutonomousLoop();
 
         const snap = server.sim.saveState();
