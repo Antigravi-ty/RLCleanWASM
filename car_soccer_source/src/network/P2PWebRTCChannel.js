@@ -5,7 +5,8 @@
  * Features:
  * - Unreliable, unordered RTCDataChannel (ordered: false, maxRetransmits: 0) matching Rocket League UDP.
  * - Self-contained Token Handshake (Base64 URL-safe SDP + ICE candidate bundle).
- * - Automatic BroadcastChannel signaling for instant local cross-tab discovery.
+ * - Automatic BroadcastChannel signaling & real-time trickle ICE candidate exchange.
+ * - Robust dual-transport: DataChannel primary with seamless BroadcastChannel fallback.
  * - High-speed binary framing using InputPacketCodec and ServerSnapshotCodec.
  * - Real measured RTT via periodic Ping/Pong heartbeat.
  * - Adjustable simulated extra latency (default 0ms), jitter, and packet drop injection.
@@ -37,10 +38,12 @@ export class P2PWebRTCChannel {
   /**
    * @param {object} [options]
    * @param {'host'|'client'} [options.role='client']
-   * @param {number} [options.extraLatencyMs=0] Simulated extra latency in ms (default 0ms = no added latency)
+   * @param {number} [options.extraLatencyMs=0] Simulated extra latency in ms
    * @param {number} [options.jitterMs=2] Simulated jitter in ms
    * @param {number} [options.packetLossRate=0.0] Simulated packet loss rate (0.0 - 1.0)
    * @param {string} [options.playerName='Player']
+   * @param {number} [options.colorSlot=0]
+   * @param {string} [options.colorHex='#ff7043']
    * @param {string} [options.signalingChannelName='car_soccer_online_p2p']
    */
   constructor(options = {}) {
@@ -49,19 +52,24 @@ export class P2PWebRTCChannel {
     this.jitterMs = options.jitterMs ?? 2;
     this.packetLossRate = options.packetLossRate ?? 0.0;
     this.playerName = options.playerName ?? 'Player';
+    this.localColorSlot = options.colorSlot ?? (this.role === 'host' ? 3 : 0);
+    this.localColorHex = options.colorHex ?? (this.role === 'host' ? '#42a5f5' : '#ff7043');
+    this.peerName = null;
+    this.peerColorSlot = null;
+    this.peerColorHex = null;
     this.signalingChannelName = options.signalingChannelName ?? 'car_soccer_online_p2p';
 
     this.isOpen = false;
     this.pc = null;
     this.dataChannel = null;
     this.localCandidates = [];
-    this.gatheringPromise = null;
+    this.pendingRemoteCandidates = [];
 
-    // Simulation delivery queues
-    this.inboundQueue = [];  // Packets received from peer, queued for deliverAt
-    this.outboundQueue = []; // Packets queued before sending (if latency applied)
+    // Delivery queues
+    this.inboundQueue = [];
+    this.outboundQueue = [];
 
-    // Measured stats
+    // Latency & stats
     this.measuredRttMs = 0;
     this.measuredJitterMs = 0;
     this.lastPingSentTime = 0;
@@ -83,6 +91,7 @@ export class P2PWebRTCChannel {
     this.onConnected = null;
     this.onDisconnected = null;
     this.onPacketReceived = null;
+    this.onColorChange = null;
 
     this._initSignalingChannel();
   }
@@ -100,6 +109,29 @@ export class P2PWebRTCChannel {
 
   _handleBroadcastMessage(msg) {
     if (!msg || !msg.type) return;
+
+    // Cross-tab real-time trickle ICE candidate exchange
+    if (msg.type === 'ice_candidate' && msg.candidate && msg.senderRole !== this.role) {
+      if (this.pc && this.pc.remoteDescription) {
+        try {
+          this.pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
+        } catch (_) {}
+      } else {
+        this.pendingRemoteCandidates.push(msg.candidate);
+      }
+      return;
+    }
+
+    // Cross-tab data frame transport fallback
+    if (msg.type === 'cross_tab_frame' && msg.senderRole !== this.role && msg.frame) {
+      if (!this.isOpen) {
+        this.isOpen = true;
+        this.onConnected?.();
+      }
+      this._handleIncomingMessage(msg.frame);
+      return;
+    }
+
     if (this.onBroadcastSignal) {
       this.onBroadcastSignal(msg);
     }
@@ -107,13 +139,15 @@ export class P2PWebRTCChannel {
 
   broadcastSignal(type, payload = {}) {
     if (this.broadcastChannel) {
-      this.broadcastChannel.postMessage({
-        type,
-        senderRole: this.role,
-        senderName: this.playerName,
-        timestamp: Date.now(),
-        ...payload
-      });
+      try {
+        this.broadcastChannel.postMessage({
+          type,
+          senderRole: this.role,
+          senderName: this.playerName,
+          timestamp: Date.now(),
+          ...payload
+        });
+      } catch (_) {}
     }
   }
 
@@ -127,62 +161,93 @@ export class P2PWebRTCChannel {
 
     const config = {
       iceServers: [
+        { urls: 'stun:stun.qq.com:3478' },
+        { urls: 'stun:stun.miwifi.com:3478' },
+        { urls: 'stun:stun.chat.bilibili.com:3478' },
+        { urls: 'stun:stun.cloudflare.com:3478' },
         { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun.cloudflare.com:3478' }
+        { urls: 'stun:stun1.l.google.com:19302' }
       ]
     };
 
     this.pc = new RTCPeerConnection(config);
     this.localCandidates = [];
+    this.pendingRemoteCandidates = [];
 
     this.pc.onicecandidate = (event) => {
       if (event.candidate) {
-        this.localCandidates.push(event.candidate.toJSON());
+        const candJson = event.candidate.toJSON();
+        this.localCandidates.push(candJson);
+        this.broadcastSignal('ice_candidate', { candidate: candJson });
       }
     };
 
     this.pc.oniceconnectionstatechange = () => {
-      console.log(`[P2PWebRTCChannel] ICE Connection State: ${this.pc.iceConnectionState}`);
+      console.log(`[P2PWebRTCChannel] ICE Connection State: ${this.pc?.iceConnectionState}`);
+      if (this.pc?.iceConnectionState === 'connected' || this.pc?.iceConnectionState === 'completed') {
+        this._markConnected();
+      } else if (this.pc?.iceConnectionState === 'failed' || this.pc?.iceConnectionState === 'disconnected') {
+        if (this.isOpen && !this.broadcastChannel) {
+          this.isOpen = false;
+          this.onDisconnected?.();
+        }
+      }
     };
 
     this.pc.onconnectionstatechange = () => {
-      console.log(`[P2PWebRTCChannel] Connection State: ${this.pc.connectionState}`);
-      if (this.pc.connectionState === "connected") {
-        this.isOpen = true;
-      } else if (this.pc.connectionState === "disconnected" || this.pc.connectionState === "failed") {
-        this.isOpen = false;
-        this.onDisconnected?.();
+      console.log(`[P2PWebRTCChannel] Connection State: ${this.pc?.connectionState}`);
+      if (this.pc?.connectionState === 'connected') {
+        this._markConnected();
+      } else if (this.pc?.connectionState === 'failed' || this.pc?.connectionState === 'closed') {
+        if (this.isOpen && !this.broadcastChannel) {
+          this.isOpen = false;
+          this.onDisconnected?.();
+        }
       }
     };
 
-    this.pc.oniceconnectionstatechange = () => {
-      if (this.pc.iceConnectionState === 'disconnected' || this.pc.iceConnectionState === 'failed') {
-        this.isOpen = false;
-        this.onDisconnected?.();
-      }
-    };
+    return this.pc;
+  }
 
-    this.gatheringPromise = new Promise((resolve) => {
-      if (this.pc.iceGatheringState === 'complete') {
+  _waitForIceGathering(timeoutMs = 2000) {
+    return new Promise((resolve) => {
+      if (!this.pc || this.pc.iceGatheringState === 'complete') {
         resolve();
         return;
       }
+      let timer = null;
       const onStateChange = () => {
         if (this.pc && this.pc.iceGatheringState === 'complete') {
-          this.pc.removeEventListener('icegatheringstatechange', onStateChange);
+          cleanup();
           resolve();
         }
       };
+      const onCandidate = (e) => {
+        if (!e.candidate) {
+          cleanup();
+          resolve();
+        }
+      };
+      const cleanup = () => {
+        if (timer) clearTimeout(timer);
+        this.pc?.removeEventListener('icegatheringstatechange', onStateChange);
+        this.pc?.removeEventListener('icecandidate', onCandidate);
+      };
       this.pc.addEventListener('icegatheringstatechange', onStateChange);
-      // Failsafe timeout: resolve after 600ms so token is generated even if remote STUN is slow
-      setTimeout(() => {
-        if (this.pc) this.pc.removeEventListener('icegatheringstatechange', onStateChange);
+      this.pc.addEventListener('icecandidate', onCandidate);
+      timer = setTimeout(() => {
+        cleanup();
         resolve();
-      }, 600);
+      }, timeoutMs);
     });
+  }
 
-    return this.pc;
+  _markConnected() {
+    if (!this.isOpen) {
+      this.isOpen = true;
+      console.log(`[P2PWebRTCChannel] Connected successfully as ${this.role}!`);
+      this.onConnected?.();
+    }
   }
 
   /**
@@ -206,7 +271,8 @@ export class P2PWebRTCChannel {
     const offer = await this.pc.createOffer();
     await this.pc.setLocalDescription(offer);
 
-    await this.gatheringPromise;
+    // Wait for local candidates to be gathered
+    await this._waitForIceGathering(1500);
 
     const payload = {
       type: 'offer',
@@ -219,8 +285,7 @@ export class P2PWebRTCChannel {
     };
 
     const token = 'RL_OFFER_' + encodeSignalToken(payload);
-    console.log(`[P2PWebRTCChannel] Host offer token created (${token.length} chars).`);
-    // Auto-broadcast room offer for nearby tabs
+    console.log(`[P2PWebRTCChannel] Host offer token created (${token.length} chars). Candidates gathered: ${this.localCandidates.length}`);
     this.broadcastSignal('room_offer', {
       token,
       hostName: this.playerName,
@@ -264,17 +329,23 @@ export class P2PWebRTCChannel {
       sdp: offerData.sdp
     }));
 
-    // Ingest any bundled candidates
+    // Ingest bundled offer candidates
     if (Array.isArray(offerData.candidates)) {
       for (const cand of offerData.candidates) {
         try { await this.pc.addIceCandidate(new RTCIceCandidate(cand)); } catch (_) {}
       }
     }
+    // Ingest any queued trickle candidates
+    for (const cand of this.pendingRemoteCandidates) {
+      try { await this.pc.addIceCandidate(new RTCIceCandidate(cand)); } catch (_) {}
+    }
+    this.pendingRemoteCandidates = [];
 
     const answer = await this.pc.createAnswer();
     await this.pc.setLocalDescription(answer);
 
-    await this.gatheringPromise;
+    // Wait for client candidates to be gathered
+    await this._waitForIceGathering(1500);
 
     const payload = {
       type: 'answer',
@@ -287,7 +358,7 @@ export class P2PWebRTCChannel {
     };
 
     const token = 'RL_ANSWER_' + encodeSignalToken(payload);
-    console.log(`[P2PWebRTCChannel] Client answer token created (${token.length} chars).`);
+    console.log(`[P2PWebRTCChannel] Client answer token created (${token.length} chars). Candidates gathered: ${this.localCandidates.length}`);
     this.broadcastSignal('room_answer', {
       token,
       clientName: this.playerName,
@@ -330,6 +401,10 @@ export class P2PWebRTCChannel {
         try { await this.pc.addIceCandidate(new RTCIceCandidate(cand)); } catch (_) {}
       }
     }
+    for (const cand of this.pendingRemoteCandidates) {
+      try { await this.pc.addIceCandidate(new RTCIceCandidate(cand)); } catch (_) {}
+    }
+    this.pendingRemoteCandidates = [];
   }
 
   sendColorChange(slotId, hex, carIndex) {
@@ -339,31 +414,27 @@ export class P2PWebRTCChannel {
       hex,
       carIndex
     });
-    if (this.dataChannel && this.dataChannel.readyState === 'open') {
-      try {
-        this.dataChannel.send(payload);
-        console.log(`[P2PWebRTCChannel] Sent color_change packet: slot ${slotId} (${hex}) for car ${carIndex}`);
-      } catch (err) {
-        console.warn('[P2PWebRTCChannel] Failed to send color change:', err);
-      }
-    }
+    this._sendRaw(payload);
   }
 
   _bindDataChannel(channel) {
     channel.onopen = () => {
-      console.log(`[P2PWebRTCChannel] DataChannel "${channel.label}" OPEN! Handshake complete.`);
-      this.isOpen = true;
-      this.onConnected?.();
+      console.log('[P2PWebRTCChannel] RTCDataChannel is OPEN and ready for UDP streaming!');
+      this._markConnected();
+      this._startPingInterval();
     };
 
     channel.onclose = () => {
-      console.log(`[P2PWebRTCChannel] DataChannel "${channel.label}" CLOSED.`);
-      this.isOpen = false;
-      this.onDisconnected?.();
+      console.log('[P2PWebRTCChannel] RTCDataChannel CLOSED');
+      if (!this.broadcastChannel) {
+        this.isOpen = false;
+        this.onDisconnected?.();
+      }
+      this._stopPingInterval();
     };
 
     channel.onerror = (err) => {
-      console.error('[P2PWebRTCChannel] DataChannel error:', err);
+      console.error('[P2PWebRTCChannel] RTCDataChannel error:', err);
     };
 
     channel.onmessage = (event) => {
@@ -394,21 +465,28 @@ export class P2PWebRTCChannel {
       } catch (_) {}
     }
 
-    // Binary packet decoding (InputPacketCodec vs ServerSnapshotCodec)
+    // Binary packet decoding (InputPacketCodec vs ServerSnapshotCodec vs Text)
     let payload = data;
     if (data instanceof ArrayBuffer || data instanceof Uint8Array) {
-      this.stats.bytesReceived += data.byteLength;
-      if (ServerSnapshotCodec.isSnapshotPacket(data)) {
-        payload = ServerSnapshotCodec.decode(data);
+      const uint8 = data instanceof Uint8Array ? data : new Uint8Array(data);
+      this.stats.bytesReceived += uint8.byteLength;
+      if (ServerSnapshotCodec.isSnapshotPacket(uint8)) {
+        payload = ServerSnapshotCodec.decode(uint8);
       } else {
-        const decoded = InputPacketCodec.decode(data);
-        if (decoded) payload = decoded;
+        const decoded = InputPacketCodec.decode(uint8);
+        if (decoded) {
+          payload = decoded;
+        } else {
+          try {
+            const str = new TextDecoder().decode(uint8);
+            payload = JSON.parse(str);
+          } catch (_) {}
+        }
       }
     }
 
     if (!payload) return;
 
-    // Apply simulated inbound extra latency if configured
     const deliverAt = this.extraLatencyMs > 0
       ? now + this.extraLatencyMs + (Math.random() * 2 - 1) * this.jitterMs
       : 0;
@@ -423,9 +501,7 @@ export class P2PWebRTCChannel {
   }
 
   _sendPong(sendTime) {
-    if (this.dataChannel && this.dataChannel.readyState === 'open') {
-      this.dataChannel.send(JSON.stringify({ type: 'pong', sendTime }));
-    }
+    this._sendRaw(JSON.stringify({ type: 'pong', sendTime }));
   }
 
   _handlePong(sendTime) {
@@ -441,7 +517,6 @@ export class P2PWebRTCChannel {
     }
   }
 
-  // Latency & drop setters matching NetworkChannel interface
   setExtraLatency(extraLatencyMs) {
     this.extraLatencyMs = Math.max(0, extraLatencyMs);
   }
@@ -458,26 +533,67 @@ export class P2PWebRTCChannel {
     this.packetLossRate = Math.min(1.0, Math.max(0.0, rate));
   }
 
-  forceDropNextInput(count = 5) {
-    this.packetsToDrop = count;
+  forceDropNextInput(count = 1) {
     this.dropNextPacket = true;
+    this.packetsToDrop = Math.max(1, count);
   }
 
-  dropSinglePacket() {
-    this.forceDropNextInput(1);
+  _startPingInterval() {
+    this._stopPingInterval();
+    this.pingTimer = setInterval(() => {
+      if (this.isOpen) {
+        this.lastPingSentTime = performance.now();
+        this.stats.pingsSent++;
+        this._sendRaw(JSON.stringify({
+          type: 'ping',
+          sendTime: this.lastPingSentTime
+        }));
+      }
+    }, this.pingIntervalMs);
+  }
+
+  _stopPingInterval() {
+    if (this.pingTimer) {
+      clearInterval(this.pingTimer);
+      this.pingTimer = null;
+    }
   }
 
   /**
-   * Sends client input packet over WebRTC
-   * @param {object|Uint8Array} packet
+   * Sends binary or string data via WebRTC dataChannel or fallback BroadcastChannel
+   */
+  _sendRaw(buffer) {
+    let sent = false;
+    if (this.dataChannel && this.dataChannel.readyState === 'open') {
+      try {
+        this.dataChannel.send(buffer);
+        sent = true;
+      } catch (err) {
+        console.warn('[P2PWebRTCChannel] dataChannel send error:', err);
+      }
+    }
+
+    // BroadcastChannel fallback for local tab pairing
+    if (!sent && this.broadcastChannel) {
+      try {
+        this.broadcastSignal('cross_tab_frame', { frame: buffer });
+        sent = true;
+      } catch (_) {}
+    }
+
+    return sent;
+  }
+
+  /**
+   * Client sends input packet to Server
+   * @param {object} packet
    * @param {number} [nowMs=performance.now()]
+   * @returns {boolean}
    */
   sendClientInput(packet, nowMs = performance.now()) {
-    this.stats.packetsSent++;
-
-    if (this.dropNextPacket || this.packetsToDrop > 0) {
-      if (this.packetsToDrop > 0) this.packetsToDrop--;
-      this.dropNextPacket = false;
+    if (this.dropNextPacket) {
+      this.packetsToDrop--;
+      if (this.packetsToDrop <= 0) this.dropNextPacket = false;
       this.stats.packetsDropped++;
       return false;
     }
@@ -487,76 +603,56 @@ export class P2PWebRTCChannel {
       return false;
     }
 
-    // Binary encode input if object
-    let buf = packet;
-    if (!(packet instanceof Uint8Array) && !(packet instanceof ArrayBuffer)) {
-      if (packet.history) {
-        buf = InputPacketCodec.encode(packet.carIndex ?? 0, packet.targetTick ?? packet.tick, packet.history);
-      } else if (packet.controls) {
-        buf = InputPacketCodec.encode(packet.carIndex ?? 0, packet.tick, [
-          { tick: packet.tick, controls: packet.controls }
-        ]);
-      }
+    let buffer;
+    if (packet instanceof Uint8Array) {
+      buffer = packet.buffer.slice(packet.byteOffset, packet.byteOffset + packet.byteLength);
+    } else if (packet instanceof ArrayBuffer) {
+      buffer = packet;
+    } else if (packet && packet.history) {
+      const encoded = InputPacketCodec.encode(packet.carIndex ?? 0, packet.targetTick ?? packet.tick ?? 0, packet.history);
+      buffer = encoded.buffer;
+    } else {
+      buffer = new TextEncoder().encode(JSON.stringify(packet)).buffer;
     }
 
-    if (this.dataChannel && this.dataChannel.readyState === 'open') {
-      try {
-        this.dataChannel.send(buf);
-        if (buf.byteLength) this.stats.bytesSent += buf.byteLength;
-      } catch (err) {
-        console.warn('[P2PWebRTCChannel] Error sending input:', err);
-      }
-    }
+    this.stats.packetsSent++;
+    this.stats.bytesSent += buffer.byteLength;
 
-    // Check heartbeat ping
-    if (nowMs - this.lastPingSentTime > this.pingIntervalMs) {
-      this.lastPingSentTime = nowMs;
-      this.stats.pingsSent++;
-      if (this.dataChannel && this.dataChannel.readyState === 'open') {
-        try {
-          this.dataChannel.send(JSON.stringify({ type: 'ping', sendTime: nowMs }));
-        } catch (_) {}
-      }
-    }
-
-    return true;
+    return this._sendRaw(buffer);
   }
 
   /**
-   * Sends authoritative server state packet over WebRTC
-   * @param {object|Uint8Array} packet
+   * Server sends state snapshot to Client
+   * @param {object} packet
    * @param {number} [nowMs=performance.now()]
+   * @returns {boolean}
    */
   sendServerState(packet, nowMs = performance.now()) {
-    this.stats.packetsSent++;
-
-    if (this.dropNextPacket || this.packetsToDrop > 0) {
-      if (this.packetsToDrop > 0) this.packetsToDrop--;
-      this.dropNextPacket = false;
-      this.stats.packetsDropped++;
-      return false;
-    }
-
     if (this.packetLossRate > 0 && Math.random() < this.packetLossRate) {
       this.stats.packetsDropped++;
       return false;
     }
 
-    let buf = packet;
-    if (!(packet instanceof Uint8Array) && !(packet instanceof ArrayBuffer)) {
-      buf = ServerSnapshotCodec.encode(packet);
+    let buffer;
+    if (packet instanceof Uint8Array) {
+      buffer = packet.buffer.slice(packet.byteOffset, packet.byteOffset + packet.byteLength);
+    } else if (packet instanceof ArrayBuffer) {
+      buffer = packet;
+    } else if (packet && (packet.stateSnapshot || packet.serverTick !== undefined)) {
+      const binary = ServerSnapshotCodec.encode(packet);
+      buffer = binary.buffer;
+    } else {
+      buffer = new TextEncoder().encode(JSON.stringify(packet)).buffer;
     }
 
-    if (this.dataChannel && this.dataChannel.readyState === 'open') {
-      try {
-        this.dataChannel.send(buf);
-        if (buf.byteLength) this.stats.bytesSent += buf.byteLength;
-      } catch (err) {
-        console.warn('[P2PWebRTCChannel] Error sending state:', err);
-      }
-    }
+    this.stats.packetsSent++;
+    this.stats.bytesSent += buffer.byteLength;
 
-    return true;
+    return this._sendRaw(buffer);
+  }
+
+  sendInput(packet, nowMs = performance.now()) {
+    return this.sendClientInput(packet, nowMs);
   }
 
   /**
@@ -598,31 +694,23 @@ export class P2PWebRTCChannel {
     return delivered;
   }
 
-  reset() {
+  destroy() {
+    this.isOpen = false;
+    this._stopPingInterval();
+    if (this.dataChannel) {
+      try { this.dataChannel.close(); } catch (_) {}
+      this.dataChannel = null;
+    }
+    if (this.pc) {
+      try { this.pc.close(); } catch (_) {}
+      this.pc = null;
+    }
+    if (this.broadcastChannel) {
+      try { this.broadcastChannel.close(); } catch (_) {}
+      this.broadcastChannel = null;
+    }
     this.inboundQueue = [];
     this.outboundQueue = [];
-    this.dropNextPacket = false;
-    this.packetsToDrop = 0;
-    this.stats = {
-      packetsSent: 0,
-      packetsReceived: 0,
-      packetsDropped: 0,
-      bytesSent: 0,
-      bytesReceived: 0,
-      pingsSent: 0,
-      pongsReceived: 0
-    };
-  }
-
-  destroy() {
-    this.reset();
-    try { this.dataChannel?.close(); } catch (_) {}
-    try { this.pc?.close(); } catch (_) {}
-    try { this.broadcastChannel?.close(); } catch (_) {}
-    this.dataChannel = null;
-    this.pc = null;
-    this.broadcastChannel = null;
-    this.isOpen = false;
   }
 }
 

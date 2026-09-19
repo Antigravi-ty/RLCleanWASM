@@ -434,6 +434,7 @@ export class GameRuntime {
       },
       onClose: () => {
         this.isCursorBrowsing = false;
+        this.syncPausedAndInputState();
       }
     });
     this.garageDialog = new GarageDialog(this.container, isOpen => this.handleOverlayChange('car', isOpen));
@@ -1848,6 +1849,11 @@ export class GameRuntime {
         ) {
           this.isCursorBrowsing = true;
           this.syncPausedAndInputState();
+        } else {
+          if (this.openOverlays.size === 0) {
+            this.isCursorBrowsing = false;
+            this.syncPausedAndInputState();
+          }
         }
       };
       this.container.addEventListener('pointerdown', this._onContainerPointerDown, true);
@@ -2093,9 +2099,8 @@ export class GameRuntime {
       this.renderer.domElement.addEventListener('mousedown', this._onCanvasMouseDown);
 
       this._onCanvasClick = evt => {
-        const wasPending = this.pendingClickToPlay;
         this.pendingClickToPlay = false;
-        if (!(!wasPending || !this.isCursorBrowsing || this.openOverlays.size > 0 || evt.button !== 0)) {
+        if (this.openOverlays.size === 0 && evt.button === 0) {
           evt.preventDefault();
           evt.stopPropagation();
           onDismissCursor();

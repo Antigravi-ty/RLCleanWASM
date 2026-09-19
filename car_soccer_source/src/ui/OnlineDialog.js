@@ -42,6 +42,8 @@ export class OnlineDialog {
     this.hostColorHex = CAR_COLOR_SLOTS[3].hex;
     this.clientColorSlot = 0;
     this.clientColorHex = CAR_COLOR_SLOTS[0].hex;
+    this.parsedOfferHost = null;
+    this.lastOfferInputValue = "";
 
     // Active channels
     this.hostP2PChannel = null;
@@ -724,9 +726,25 @@ export class OnlineDialog {
 
     noticeEl.querySelector('[data-el="btnInstantJoin"]')?.addEventListener('click', () => {
       this.view = 'join';
+      if (this.detectedLocalHost) {
+        this.lastOfferInputValue = this.detectedLocalHost.token;
+        this.parsedOfferHost = {
+          hostName: this.detectedLocalHost.hostName || "Host",
+          colorSlot: this.detectedLocalHost.colorSlot !== undefined ? this.detectedLocalHost.colorSlot : 3,
+          colorHex: this.detectedLocalHost.colorHex || "#42a5f5"
+        };
+        if (this.clientColorSlot === this.parsedOfferHost.colorSlot) {
+          const nextSlot = CAR_COLOR_SLOTS.find(s => s.id !== this.parsedOfferHost.colorSlot);
+          if (nextSlot) {
+            this.clientColorSlot = nextSlot.id;
+            this.clientColorHex = nextSlot.hex;
+            this.callbacks.onColorSelect?.(1, nextSlot.id, nextSlot.hex);
+          }
+        }
+      }
       this.render();
       const inp = this.dom.content.querySelector('[data-el="txtOfferInput"]');
-      if (inp) {
+      if (inp && this.detectedLocalHost?.token) {
         inp.value = this.detectedLocalHost.token;
       }
       this._handleGenerateAnswer();
@@ -903,8 +921,10 @@ export class OnlineDialog {
     this.dom.badge.style.color = '#d2a8ff';
 
     const isConnected = this.hostP2PChannel?.isOpen;
-    const opponentColorSlot = this.hostP2PChannel?.peerColorSlot ?? this.clientColorSlot;
-    const opponentColor = getCarColorSlotById(opponentColorSlot);
+    const opponentColorSlot = (isConnected && this.hostP2PChannel?.peerColorSlot !== null && this.hostP2PChannel?.peerColorSlot !== undefined)
+      ? this.hostP2PChannel.peerColorSlot
+      : null;
+    const opponentColor = opponentColorSlot !== null ? getCarColorSlotById(opponentColorSlot) : null;
     const myColor = getCarColorSlotById(this.hostColorSlot);
 
     this.dom.content.innerHTML = `
@@ -931,7 +951,7 @@ export class OnlineDialog {
         <div style="background:rgba(235,115,0,0.1);border:1px solid rgba(235,115,0,0.3);padding:10px;border-radius:6px;">
           <div style="display:flex;align-items:center;justify-content:space-between;">
             <div style="font-size:10px;font-weight:700;color:#ff9b44;text-transform:uppercase;">Player 2 (Opponent · Car 1)</div>
-            ${isConnected ? `<div style="width:12px;height:12px;border-radius:50%;background:${opponentColor.hex};border:1px solid #fff;"></div>` : ''}
+            ${isConnected && opponentColor ? `<div style="width:12px;height:12px;border-radius:50%;background:${opponentColor.hex};border:1px solid #fff;"></div>` : ''}
           </div>
           <div style="font-size:14px;font-weight:700;color:#ffffff;margin-top:2px;" data-el="txtPeerStatus">
             ${isConnected ? (this.hostP2PChannel?.peerName || 'Connected Player') : 'Waiting for connection...'}
@@ -1047,8 +1067,16 @@ export class OnlineDialog {
     this.dom.badge.style.color = '#58a6ff';
 
     const isConnected = this.clientP2PChannel?.isOpen;
-    const hostColorSlot = this.clientP2PChannel?.peerColorSlot ?? this.detectedLocalHost?.colorSlot ?? this.hostColorSlot;
-    const hostColor = getCarColorSlotById(hostColorSlot);
+    const hostInfo = (this.clientP2PChannel?.isOpen && this.clientP2PChannel.peerColorSlot !== null && this.clientP2PChannel.peerColorSlot !== undefined)
+      ? {
+          hostName: this.clientP2PChannel.peerName || "Host",
+          colorSlot: this.clientP2PChannel.peerColorSlot,
+          colorHex: this.clientP2PChannel.peerColorHex
+        }
+      : this.parsedOfferHost;
+
+    const hostColorSlot = hostInfo ? hostInfo.colorSlot : null;
+    const hostColor = hostColorSlot !== null ? getCarColorSlotById(hostColorSlot) : null;
     const myColor = getCarColorSlotById(this.clientColorSlot);
 
     this.dom.content.innerHTML = `
@@ -1077,13 +1105,13 @@ export class OnlineDialog {
         <div style="background:rgba(56,139,253,0.1);border:1px solid rgba(56,139,253,0.3);padding:10px;border-radius:6px;">
           <div style="display:flex;align-items:center;justify-content:space-between;">
             <div style="font-size:10px;font-weight:700;color:#58a6ff;text-transform:uppercase;">Host (Car 0)</div>
-            <div style="width:12px;height:12px;border-radius:50%;background:${hostColor.hex};border:1px solid #fff;"></div>
+            ${hostColor ? `<div style="width:12px;height:12px;border-radius:50%;background:${hostColor.hex};border:1px solid #fff;"></div>` : `<div style="width:12px;height:12px;border-radius:50%;background:rgba(255,255,255,0.2);border:1px dashed #8b949e;"></div>`}
           </div>
           <div style="font-size:14px;font-weight:700;color:#ffffff;margin-top:2px;">
-            ${this.clientP2PChannel?.peerName || this.detectedLocalHost?.hostName || 'Host'}
+            ${hostInfo ? hostInfo.hostName : "Host (Standby for Token)"}
           </div>
           <div style="font-size:11px;color:${isConnected ? '#3fb950' : '#8b949e'};margin-top:2px;">
-            ${isConnected ? '● Synchronized at 120Hz' : '○ Standby for Handshake'}
+            ${isConnected ? '● Synchronized at 120Hz' : (hostInfo ? '○ Token Parsed · Ready to Connect' : '○ Paste Offer Token to Join')}
           </div>
         </div>
       </div>
@@ -1131,6 +1159,44 @@ export class OnlineDialog {
     this._bindErrorBanner();
     this._bindColorPicker('client');
 
+    const txtOfferInput = this.dom.content.querySelector('[data-el="txtOfferInput"]');
+    if (txtOfferInput) {
+      if (this.lastOfferInputValue) {
+        txtOfferInput.value = this.lastOfferInputValue;
+      }
+      txtOfferInput.addEventListener('input', () => {
+        const val = txtOfferInput.value.trim();
+        this.lastOfferInputValue = val;
+        if (val) {
+          try {
+            const decoded = decodeSignalToken(val);
+            if (decoded && (decoded.type === 'offer' || decoded.sdp)) {
+              this.parsedOfferHost = {
+                hostName: decoded.hostName || "Host",
+                colorSlot: decoded.hostColorSlot !== undefined ? decoded.hostColorSlot : 3,
+                colorHex: decoded.hostColorHex || "#42a5f5"
+              };
+              if (this.clientColorSlot === this.parsedOfferHost.colorSlot) {
+                const nextSlot = CAR_COLOR_SLOTS.find(s => s.id !== this.parsedOfferHost.colorSlot);
+                if (nextSlot) {
+                  this.clientColorSlot = nextSlot.id;
+                  this.clientColorHex = nextSlot.hex;
+                  this.callbacks.onColorSelect?.(1, nextSlot.id, nextSlot.hex);
+                }
+              }
+              this._renderJoinView();
+              return;
+            }
+          } catch (_) {}
+        } else {
+          if (this.parsedOfferHost) {
+            this.parsedOfferHost = null;
+            this._renderJoinView();
+          }
+        }
+      });
+    }
+
     this.dom.content.querySelector('[data-el="btnBackLobby"]')?.addEventListener('click', () => {
       this.view = 'lobby';
       this.render();
@@ -1169,6 +1235,25 @@ export class OnlineDialog {
     }
 
     try {
+      try {
+        const offerData = decodeSignalToken(offer);
+        if (offerData && offerData.hostColorSlot !== undefined) {
+          this.parsedOfferHost = {
+            hostName: offerData.hostName || "Host",
+            colorSlot: offerData.hostColorSlot,
+            colorHex: offerData.hostColorHex || "#42a5f5"
+          };
+          if (this.clientColorSlot === this.parsedOfferHost.colorSlot) {
+            const nextSlot = CAR_COLOR_SLOTS.find(s => s.id !== this.parsedOfferHost.colorSlot);
+            if (nextSlot) {
+              this.clientColorSlot = nextSlot.id;
+              this.clientColorHex = nextSlot.hex;
+              this.callbacks.onColorSelect?.(1, nextSlot.id, nextSlot.hex);
+            }
+          }
+        }
+      } catch (_) {}
+
       this.clientP2PChannel = new P2PWebRTCChannel({
         role: 'client',
         playerName: this.playerName,

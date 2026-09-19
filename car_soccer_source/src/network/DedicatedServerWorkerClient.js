@@ -139,13 +139,26 @@ export class DedicatedServerWorkerClient {
     if (!channel || channel.__boundWorkerClient === this) return;
     channel.__boundWorkerClient = this;
 
-    const origSend = channel.sendClientInput.bind(channel);
-    channel.sendClientInput = (packet, nowMs = performance.now()) => {
-      const sent = origSend(packet, nowMs);
-      if (sent && this.isWorker && this.worker) {
-        this._postCommand('clientInput', { channelId, packet });
+    if (typeof channel.sendClientInput === "function") {
+      const origSend = channel.sendClientInput.bind(channel);
+      channel.sendClientInput = (packet, nowMs = performance.now()) => {
+        const sent = origSend(packet, nowMs);
+        if (sent && this.isWorker && this.worker) {
+          this._postCommand("clientInput", { channelId, packet });
+        }
+        return sent;
+      };
+    }
+
+    // Forward remote peer inputs from WebRTC channel to server worker
+    const origOnPacketReceived = channel.onPacketReceived;
+    channel.onPacketReceived = (packet) => {
+      origOnPacketReceived?.(packet);
+      if (packet && (packet.carIndex !== undefined || packet.controls !== undefined || packet.redundantInputs !== undefined)) {
+        if (this.isWorker && this.worker) {
+          this._postCommand("clientInput", { channelId, packet });
+        }
       }
-      return sent;
     };
   }
 

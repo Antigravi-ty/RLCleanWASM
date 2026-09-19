@@ -216,6 +216,14 @@ export class PredictionReconciler {
       }
 
       let currentClientTick = Math.floor(this.sim.getHeaderView().tickCount);
+      const rollbackDepth = currentClientTick - serverTick;
+
+      if (!this.isTimelineSynchronized || Math.abs(rollbackDepth) > 120) {
+        console.log(`[PredictionReconciler] Timeline sync aligned (depth: ${rollbackDepth} ticks). Snapping timeline to server tick ${serverTick}.`);
+        this.syncTimeline(packet.stateSnapshot, serverTick, nowMs);
+        this.shouldSkipLocalStep = false;
+        continue;
+      }
 
       // Diagnostic check & fast-forward if server tick has overtaken client
       if (serverTick > currentClientTick) {
@@ -225,6 +233,7 @@ export class PredictionReconciler {
           this.sampleAndPredictInput(this.localCarIndex, this.lastLocalControls, nowMs);
           this.sim.stepSilent(1);
         }
+        this.shouldSkipLocalStep = false;
         continue;
       }
 
@@ -248,13 +257,6 @@ export class PredictionReconciler {
         this.shouldSkipLocalStep = true;
       } else {
         this.shouldSkipLocalStep = false;
-      }
-
-      const rollbackDepth = currentClientTick - serverTick;
-      if (!this.isTimelineSynchronized || Math.abs(rollbackDepth) > 120) {
-        console.log(`[PredictionReconciler] Timeline sync aligned (depth: ${rollbackDepth} ticks). Snapping timeline to server tick ${serverTick}.`);
-        this.syncTimeline(packet.stateSnapshot, serverTick, nowMs);
-        continue;
       }
 
       // Check pre-correction state of all active cars
