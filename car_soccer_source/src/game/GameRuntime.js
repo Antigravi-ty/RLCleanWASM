@@ -413,6 +413,12 @@ export class GameRuntime {
       onHostServer: async (opts) => {
         await this.hostOnlineServer(opts);
       },
+      onStopServer: async () => {
+        await this.stopOnlineServer();
+      },
+      onLeaveServer: async () => {
+        await this.stopOnlineServer();
+      },
       onJoinServer: async (opts) => {
         await this.joinOnlineServer(opts);
       },
@@ -1247,8 +1253,46 @@ export class GameRuntime {
    * @param {object} [options]
    * @param {string} [options.playerName='Host']
    */
+  cleanupOnlineSession() {
+    if (this.authoritativeServer) {
+      try { this.authoritativeServer.destroy?.(); } catch (_) {}
+      this.authoritativeServer = null;
+    }
+    if (this.networkChannel) {
+      try { this.networkChannel.destroy?.(); } catch (_) {}
+      this.networkChannel = null;
+    }
+    if (this.networkReconciler) {
+      this.networkReconciler = null;
+    }
+    if (this.networkHUD) {
+      this.networkHUD.setHeadlessClient?.(null, null);
+    }
+    this.playerCarIndex = 0;
+  }
+
+  async stopOnlineServer() {
+    this.cleanupOnlineSession();
+    if (this.arena?.cars?.[1]) {
+      this.arena.cars[1].visible = false;
+    }
+    if (this.physics && this.physics.numCars > 1) {
+      this.physics.configureCars("default", false, 0);
+    }
+    this.resetKickoff();
+  }
+
+  /**
+   * Host an online multiplayer room using a dedicated 120Hz server Web Worker
+   * @param {object} [options]
+   * @param {string} [options.playerName="Host"]
+   */
   async hostOnlineServer(options = {}) {
-    const playerName = options.playerName || 'Host';
+    if (this.authoritativeServer) {
+      console.warn("[GameRuntime] Authoritative server already running. Disposing prior instance before hosting.");
+      await this.stopOnlineServer();
+    }
+    const playerName = options.playerName || "Host";
     this.networkChannel = new WebRTCNetworkChannel({
       rttMs: 0,
       jitterMs: 1,
