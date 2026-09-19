@@ -143,6 +143,20 @@ export class P2PWebRTCChannel {
     };
 
     this.pc.oniceconnectionstatechange = () => {
+      console.log(`[P2PWebRTCChannel] ICE Connection State: ${this.pc.iceConnectionState}`);
+    };
+
+    this.pc.onconnectionstatechange = () => {
+      console.log(`[P2PWebRTCChannel] Connection State: ${this.pc.connectionState}`);
+      if (this.pc.connectionState === "connected") {
+        this.isOpen = true;
+      } else if (this.pc.connectionState === "disconnected" || this.pc.connectionState === "failed") {
+        this.isOpen = false;
+        this.onDisconnected?.();
+      }
+    };
+
+    this.pc.oniceconnectionstatechange = () => {
       if (this.pc.iceConnectionState === 'disconnected' || this.pc.iceConnectionState === 'failed') {
         this.isOpen = false;
         this.onDisconnected?.();
@@ -175,8 +189,10 @@ export class P2PWebRTCChannel {
    * Host initializes an offer and returns the shareable Offer Token
    * @returns {Promise<string>}
    */
-  async createOfferToken() {
+  async createOfferToken(options = {}) {
     this.role = 'host';
+    if (options.hostColorSlot !== undefined) this.localColorSlot = options.hostColorSlot;
+    if (options.hostColorHex !== undefined) this.localColorHex = options.hostColorHex;
     this.createPeerConnection();
 
     // Host creates unreliable, unordered UDP data channel
@@ -197,12 +213,20 @@ export class P2PWebRTCChannel {
       sdp: this.pc.localDescription.sdp,
       candidates: this.localCandidates,
       hostName: this.playerName,
+      hostColorSlot: this.localColorSlot,
+      hostColorHex: this.localColorHex,
       version: 1
     };
 
     const token = 'RL_OFFER_' + encodeSignalToken(payload);
+    console.log(`[P2PWebRTCChannel] Host offer token created (${token.length} chars).`);
     // Auto-broadcast room offer for nearby tabs
-    this.broadcastSignal('room_offer', { token, hostName: this.playerName });
+    this.broadcastSignal('room_offer', {
+      token,
+      hostName: this.playerName,
+      hostColorSlot: this.localColorSlot,
+      hostColorHex: this.localColorHex
+    });
     return token;
   }
 
@@ -211,8 +235,10 @@ export class P2PWebRTCChannel {
    * @param {string} offerToken
    * @returns {Promise<string>}
    */
-  async acceptOfferAndCreateAnswer(offerToken) {
+  async acceptOfferAndCreateAnswer(offerToken, options = {}) {
     this.role = 'client';
+    if (options.clientColorSlot !== undefined) this.localColorSlot = options.clientColorSlot;
+    if (options.clientColorHex !== undefined) this.localColorHex = options.clientColorHex;
     this.createPeerConnection();
 
     const offerData = decodeSignalToken(offerToken);
@@ -220,7 +246,14 @@ export class P2PWebRTCChannel {
       throw new Error('Invalid offer token: expected offer payload');
     }
 
+    this.peerName = offerData.hostName || 'Host';
+    if (offerData.hostColorHex) {
+      this.peerColorHex = offerData.hostColorHex;
+      this.peerColorSlot = offerData.hostColorSlot;
+    }
+
     this.pc.ondatachannel = (event) => {
+      console.log('[P2PWebRTCChannel] Client accepted dataChannel from Host');
       this.dataChannel = event.channel;
       this.dataChannel.binaryType = 'arraybuffer';
       this._bindDataChannel(this.dataChannel);
@@ -248,11 +281,19 @@ export class P2PWebRTCChannel {
       sdp: this.pc.localDescription.sdp,
       candidates: this.localCandidates,
       clientName: this.playerName,
+      clientColorSlot: this.localColorSlot,
+      clientColorHex: this.localColorHex,
       version: 1
     };
 
     const token = 'RL_ANSWER_' + encodeSignalToken(payload);
-    this.broadcastSignal('room_answer', { token, clientName: this.playerName });
+    console.log(`[P2PWebRTCChannel] Client answer token created (${token.length} chars).`);
+    this.broadcastSignal('room_answer', {
+      token,
+      clientName: this.playerName,
+      clientColorSlot: this.localColorSlot,
+      clientColorHex: this.localColorHex
+    });
     return token;
   }
 
@@ -262,15 +303,27 @@ export class P2PWebRTCChannel {
    */
   async acceptAnswerToken(answerToken) {
     if (!this.pc) throw new Error('Host RTCPeerConnection not initialized');
+    if (this.pc.signalingState === 'stable') {
+      console.warn('[P2PWebRTCChannel] Signaling state is already stable, answer description was already set.');
+      return;
+    }
     const answerData = decodeSignalToken(answerToken);
     if (!answerData || answerData.type !== 'answer') {
       throw new Error('Invalid answer token: expected answer payload');
     }
 
+    this.peerName = answerData.clientName || 'Player 2';
+    if (answerData.clientColorHex) {
+      this.peerColorHex = answerData.clientColorHex;
+      this.peerColorSlot = answerData.clientColorSlot;
+    }
+
+    console.log(`[P2PWebRTCChannel] Setting remote answer SDP from ${this.peerName}...`);
     await this.pc.setRemoteDescription(new RTCSessionDescription({
       type: 'answer',
       sdp: answerData.sdp
     }));
+    console.log('[P2PWebRTCChannel] Remote answer SDP applied. Signaling state:', this.pc.signalingState);
 
     if (Array.isArray(answerData.candidates)) {
       for (const cand of answerData.candidates) {
@@ -279,19 +332,38 @@ export class P2PWebRTCChannel {
     }
   }
 
+  sendColorChange(slotId, hex, carIndex) {
+    const payload = JSON.stringify({
+      type: 'color_change',
+      slotId,
+      hex,
+      carIndex
+    });
+    if (this.dataChannel && this.dataChannel.readyState === 'open') {
+      try {
+        this.dataChannel.send(payload);
+        console.log(`[P2PWebRTCChannel] Sent color_change packet: slot ${slotId} (${hex}) for car ${carIndex}`);
+      } catch (err) {
+        console.warn('[P2PWebRTCChannel] Failed to send color change:', err);
+      }
+    }
+  }
+
   _bindDataChannel(channel) {
     channel.onopen = () => {
+      console.log(`[P2PWebRTCChannel] DataChannel "${channel.label}" OPEN! Handshake complete.`);
       this.isOpen = true;
       this.onConnected?.();
     };
 
     channel.onclose = () => {
+      console.log(`[P2PWebRTCChannel] DataChannel "${channel.label}" CLOSED.`);
       this.isOpen = false;
       this.onDisconnected?.();
     };
 
     channel.onerror = (err) => {
-      console.warn('[P2PWebRTCChannel] DataChannel error:', err);
+      console.error('[P2PWebRTCChannel] DataChannel error:', err);
     };
 
     channel.onmessage = (event) => {
@@ -303,10 +375,15 @@ export class P2PWebRTCChannel {
     const now = performance.now();
     this.stats.packetsReceived++;
 
-    // Text / JSON handling (Ping / Pong heartbeats)
+    // Text / JSON handling (Ping / Pong heartbeats, color sync)
     if (typeof data === 'string') {
       try {
         const msg = JSON.parse(data);
+        if (msg.type === 'color_change') {
+          console.log(`[P2PWebRTCChannel] Received remote color_change: car ${msg.carIndex} -> ${msg.hex}`);
+          this.onColorChange?.(msg);
+          return;
+        }
         if (msg.type === 'ping') {
           this._sendPong(msg.sendTime);
           return;
