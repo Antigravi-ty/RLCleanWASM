@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "masterVolume": 1.0,
+  "engineVolume": 0.8,
+  "boostVolume": 0.8,
+  "vehicleSelfVolume": 1.0,
+  "carCarCollisionVolume": 1.0,
+  "ballCollisionVolume": 1.0,
+  "carCarSoundMode": "sfx_collision",
+  "carBallHitCooldownMs": 40,
+  "carBallHitImpulseThreshold": 0,
+  "logCarBallHitEvents": false
+}
