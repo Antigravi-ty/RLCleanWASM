@@ -15,7 +15,7 @@ export function isEventWithinUI(target) {
   return (
     target instanceof Element &&
     target.closest(
-      ".hud-tools, .sheet-overlay, .car-tab, .car-overlay, .match-tab, .match-overlay, .match-hud, .match-result, .status, .touch-controls, .event-oscilloscope"
+      ".hud-tools, .sheet-overlay, .car-tab, .car-overlay, .match-tab, .match-overlay, .match-hud, .match-result, .status, .touch-controls, .event-oscilloscope, .online-overlay, .online-modal, .online-tab-btn, .net-hud, #online-button"
     ) !== null
   );
 }

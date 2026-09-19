@@ -76,6 +76,9 @@ export class NetworkReconciliationHUD {
           overflow: hidden;
           pointer-events: auto;
         }
+        .net-hud[hidden] {
+          display: none !important;
+        }
         .net-header {
           padding: 10px 14px;
           background: rgba(22, 27, 34, 0.92);
@@ -252,6 +255,8 @@ export class NetworkReconciliationHUD {
     root.id = 'hud-network-reconcile';
     root.className = 'net-hud';
     root.hidden = true;
+    root.style.display = 'none';
+    root.setAttribute('aria-hidden', 'true');
 
     root.innerHTML = `
       <div class="net-header" data-el="header">
@@ -651,16 +656,20 @@ export class NetworkReconciliationHUD {
   }
 
   show() {
+    this.visible = true;
     if (this.root) {
       this.root.hidden = false;
-      this.visible = true;
+      if (this.root.style) this.root.style.display = 'flex';
+      if (typeof this.root.setAttribute === 'function') this.root.setAttribute('aria-hidden', 'false');
     }
   }
 
   hide() {
+    this.visible = false;
     if (this.root) {
       this.root.hidden = true;
-      this.visible = false;
+      if (this.root.style) this.root.style.display = 'none';
+      if (typeof this.root.setAttribute === 'function') this.root.setAttribute('aria-hidden', 'true');
     }
   }
 
