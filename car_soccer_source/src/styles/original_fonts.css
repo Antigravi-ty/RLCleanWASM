@@ -1,0 +1,41 @@
+/**
+ * original_fonts.css
+ * Clean, externalized @font-face declarations referencing physical font files in /custom/assets/fonts/
+ * Eliminates all inline Base64 Data URIs to optimize code analysis and runtime caching.
+ */
+
+@font-face {
+  font-family: 'Lilita One';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url('/custom/assets/fonts/lilita-one-400.woff2') format('woff2'),
+       url('/custom/assets/fonts/lilita-one-400.woff') format('woff');
+}
+
+@font-face {
+  font-family: 'Archivo';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url('/custom/assets/fonts/archivo-400.woff2') format('woff2'),
+       url('/custom/assets/fonts/archivo-400.woff') format('woff');
+}
+
+@font-face {
+  font-family: 'Archivo';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 500;
+  src: url('/custom/assets/fonts/archivo-500.woff2') format('woff2'),
+       url('/custom/assets/fonts/archivo-500.woff') format('woff');
+}
+
+@font-face {
+  font-family: 'Archivo';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 700;
+  src: url('/custom/assets/fonts/archivo-700.woff2') format('woff2'),
+       url('/custom/assets/fonts/archivo-700.woff') format('woff');
+}
