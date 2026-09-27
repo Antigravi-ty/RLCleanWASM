@@ -24,7 +24,8 @@ export {
 
 export {
   loadStadiumContinuousBoundary,
-  loadStadiumArchitecture
+  loadStadiumArchitecture,
+  loadRLViserStadium
 } from "./StadiumArena.js";
 
 export {

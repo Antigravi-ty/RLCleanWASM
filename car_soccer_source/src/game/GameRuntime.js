@@ -372,6 +372,7 @@ export class GameRuntime {
     this.settingsSheet.attachGraphics(graphics => {
       this.activeGraphicsSettings = graphics;
       this.arena.setStadiumVisible(graphics.showStadium);
+      this.arena.setRLViserStadiumVisible(graphics.useRLViserStadium);
       if (this.clockScheduler) {
         this.clockScheduler.setFpsLimit(graphics.limitFps ? graphics.maxFps : null);
       }
@@ -2154,6 +2155,19 @@ export class GameRuntime {
     window.toggleNetworkControlPanel = () => this._onToggleNetworkHUD?.();
 
     this._onWindowKeyDown = evt => {
+      // Shift + V: Toggle RLViser Stadium Theme
+      if (
+        (evt.code === "KeyV" || evt.key === "v" || evt.key === "V") &&
+        evt.shiftKey &&
+        !evt.repeat
+      ) {
+        if (!isEventWithinUI(evt.target) && evt.target.tagName !== "INPUT" && evt.target.tagName !== "TEXTAREA") {
+          evt.preventDefault();
+          this.toggleRLViserStadium();
+          return;
+        }
+      }
+
       // Shift + I: Oscilloscope HUD
       if (
         (evt.code === "KeyI" || evt.key === "i" || evt.key === "I") &&
@@ -2383,6 +2397,15 @@ export class GameRuntime {
   /**
    * Destroys the runtime and disposes all resources.
    */
+  toggleRLViserStadium() {
+    if (!this.settingsSheet) return;
+    const nextVal = !this.settingsSheet.graphics.useRLViserStadium;
+    this.settingsSheet.graphics.useRLViserStadium = nextVal;
+    this.arena?.setRLViserStadiumVisible?.(nextVal);
+    this.settingsSheet.onGraphicsChange?.(this.settingsSheet.graphics);
+    this.settingsSheet.syncGraphicsControls();
+  }
+
   destroy() {
     this.stop();
 

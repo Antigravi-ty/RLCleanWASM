@@ -164,6 +164,7 @@ export function getDefaultRenderScale() {
 
 export const DEFAULT_GRAPHICS_SETTINGS = Object.freeze({
   showStadium: true,
+  useRLViserStadium: true,
   limitFps: true,
   maxFps: 120,
   renderScale: getDefaultRenderScale()
@@ -174,6 +175,7 @@ export const graphicsSettingsStore = createLocalStorageStore(
   () => ({ ...DEFAULT_GRAPHICS_SETTINGS }),
   (target, source) => {
     target.showStadium = booleanOrDefault(source.showStadiumDetails ?? source.showStadium, true);
+    target.useRLViserStadium = booleanOrDefault(source.useRLViserStadium, true);
     target.limitFps = booleanOrDefault(source.limitFps, target.limitFps);
     target.maxFps = clampNumberOrDefault(source.maxFps, target.maxFps, {
       min: MIN_FPS,
@@ -744,7 +746,8 @@ export class SettingsSheet {
                   <p class="zone__note">The surroundings outside the playable arena.</p>
                 </header>
                 <div class="zone__rows">
-                  ${renderCheckboxDim("showStadium", "Show Stadium Details", "Draws the stands, roof, lights, and exterior stadium architecture.", "graphics")}
+                  ${renderCheckboxDim("useRLViserStadium", "RLViser Stadium Scene", "Authentic Rocket League stadium meshes, goal frames, forcefield, and materials imported from RLViser.", "graphics")}
+                  ${renderCheckboxDim("showStadium", "Show Stadium Exterior Details", "Draws the stands, roof, lights, and exterior stadium architecture.", "graphics")}
                 </div>
               </section>
             </section>
@@ -2345,7 +2348,7 @@ export class SettingsSheet {
 
   updateGraphicsSetting(input) {
     const key = input.dataset.graphicsSetting;
-    if (key === "showStadium" || key === "limitFps") {
+    if (key === "showStadium" || key === "useRLViserStadium" || key === "limitFps") {
       this.graphics[key] = input.checked;
     } else if (key === "maxFps") {
       this.graphics.maxFps = Math.round(Math.max(MIN_FPS, Math.min(MAX_FPS, input.valueAsNumber)));
@@ -2362,7 +2365,7 @@ export class SettingsSheet {
   syncGraphicsControls() {
     this.overlay?.querySelectorAll("[data-graphics-setting]").forEach(input => {
       const key = input.dataset.graphicsSetting;
-      if (key === "showStadium" || key === "limitFps") {
+      if (key === "showStadium" || key === "useRLViserStadium" || key === "limitFps") {
         input.checked = this.graphics[key];
       } else if (key === "maxFps") {
         input.value = String(this.graphics.maxFps);

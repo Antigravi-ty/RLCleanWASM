@@ -1,0 +1,558 @@
+# Materials for RLViser Stadium
+
+newmtl CollisionMeshes.Collision_Mat_1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl FutureTech.Materials.ForceField_HexGage_MIC_1
+Kd 0.8000 0.4000 0.1000
+d 0.6000
+
+newmtl FutureTech.Materials.ForceField_HexGage_MIC_0
+Kd 0.8000 0.4000 0.1000
+d 0.6000
+
+newmtl Default_-1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl Default_0
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl Default_1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl Stadium_Assets.Materials.GroomedGrass_FakeLight_Team1_MIC_1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl Stadium_Assets.Materials.GroomedGrass_FakeLight_Team1_MIC_-1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl Stadium_Assets.Materials.Grass_LOD_Team1_MIC_0
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl FX_General.Mat.CubeMap_HotSpot_Mat_1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl FX_General.Mat.CubeMap_HotSpot_Team2_MIC_1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl FX_General.Mat.CubeMap_HotSpot_Mat_-1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl FX_General.Mat.CubeMap_HotSpot_Team1_MIC_-1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl FX_General.Mat.FogSheet_Mat_1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl FutureTech.Materials.MetalTexture_Mat_1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl Park_Assets.Mat.Basic_Orange_Mat_1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl RoadSigns.Materials.LightArray_Arrow_Mat_-1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl Trees.Materials.TreeBark_Mat_-1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl Trees.Materials.LombardyPoplar_B_Mat_-1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl City.Materials.CityLights_01_Mat_0
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl Trees.Materials.LombardyPoplar_B_NoWind_MIC_1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl FX_Lighting.Materials.LightCone_Team1_MIC_-1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl Trees.Materials.LombardyPoplar_B_NoWind_MIC_-1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl FX_Lighting.Materials.LightCone_Simple_MIC_1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl FX_Lighting.Materials.LightCone_Team2_MIC_1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl FX_Lighting.Materials.LightCone_Simple_MIC_-1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl Park_Assets.Materials.FlagPole_MIC_1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl Park_Assets.Mat.MIC_Park_BannerFlag00_Psy00_1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl FutureTech.Materials.MetalTexture_Mat_-1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl Park_Assets.Mat.Basic_Orange_Mat_-1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl FutureTech.Materials.Frame_01_CamFade_Mat_1
+Kd 0.2200 0.1600 0.2200
+d 1.0000
+
+newmtl FutureTech.Materials.Glass_Projected_V2_Mat_0
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl FutureTech.Materials.DarkMetal_Mat_0
+Kd 0.2500 0.2500 0.2700
+d 1.0000
+
+newmtl FutureTech.Materials.DarkMetal_Mat_1
+Kd 0.2500 0.2500 0.2700
+d 1.0000
+
+newmtl Stadium.Materials.MetalBeam_SoftEdge_Lights_MIC_1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl RoadSigns.Materials.LightArray_Arrow_Mat_1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl Stadium_Assets.Materials.Building_MIC_-1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl City.Materials.Concrete_MAT_-1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl FutureTech.Materials.Glass_Projected_V2_Team2_MIC_0
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl Stadium.Materials.StadiumLight_Mat_1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl FutureStadium_Assets.Materials.StadiumRoof_Mat_0
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl FutureTech.Materials.PaintedLine_Mat_1
+Kd 0.9300 0.9400 0.9600
+d 1.0000
+
+newmtl FutureTech.Materials.Frame_01_V2_Mat_1
+Kd 0.2200 0.1600 0.2200
+d 1.0000
+
+newmtl FX_General.Mat.FogSheet_Mat_-1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl Sky_DownTownNight_Assets.Materials.FogHemisphere_V2_Mat_0
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl Stadium_CountryFlags.OOB_CountryFlags_AllFlags_MIC_-1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl Stadium_Assets.Materials.Building_MIC_1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl City.Materials.BuildingLight_Mat_1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl Stadium_Assets.Materials.StadiumFog_Team1_MIC_1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl FutureTech.Materials.Frame_01_V2_Mat_0
+Kd 0.2200 0.1600 0.2200
+d 1.0000
+
+newmtl Stadium.Materials.Crowd_ST_Team2_Mic_1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl Sky_DownTownNight_Assets.Materials.SkyDome_MAT_0
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl Park_Assets.Materials.FlagPole_MIC_-1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl Park_Assets.Mat.MIC_Park_BannerFlag00_Psy00_-1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl Adverts.Materials.Advert_Strip_Mat_1
+Kd 0.7500 0.7500 0.7500
+d 1.0000
+
+newmtl FutureTech.Materials.TrimLight_Glow_Team2_MIC_1
+Kd 0.2200 0.1600 0.2200
+d 1.0000
+
+newmtl FutureTech.Materials.TrimLight_None_Mat_1
+Kd 0.2200 0.1600 0.2200
+d 1.0000
+
+newmtl FutureTech.Materials.HexGlass_WithArrows_Team1_MIC_1
+Kd 0.3400 0.5300 0.7800
+d 0.7500
+
+newmtl FutureTech.Materials.TrimLight_Glow_Team2_MIC_0
+Kd 0.2200 0.1600 0.2200
+d 1.0000
+
+newmtl CollisionMeshes.Collision_Mat_-1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl FutureTech.Materials.ForceField_Mat_1
+Kd 0.3000 0.6000 1.0000
+d 0.5000
+
+newmtl FutureTech.Materials.Reflective_Floor_V2_Mat_1
+Kd 0.8700 0.5700 0.3200
+d 1.0000
+
+newmtl FutureTech.Materials.Reflective_Floor_V2_Mat_0
+Kd 0.5100 0.5600 0.4500
+d 1.0000
+
+newmtl FutureTech.Materials.HexGlass_WithArrows_Team1_MIC_-1
+Kd 0.3400 0.5300 0.7800
+d 0.7500
+
+newmtl FutureTech.Materials.CrossHatched_Grate_TL_Mat_-1
+Kd 0.8000 0.3000 0.2000
+d 1.0000
+
+newmtl FutureTech.Materials.Frame_01_V2_Mat_-1
+Kd 0.2200 0.1600 0.2200
+d 1.0000
+
+newmtl FutureTech.Materials.Frame_01_MIC_-1
+Kd 0.2200 0.1600 0.2200
+d 1.0000
+
+newmtl Goal.Materials.GoalGenerator_Team2_MIC_-1
+Kd 0.2000 0.5000 1.0000
+d 1.0000
+
+newmtl FutureTech.Materials.DarkMetal_SeeThru_Mat_0
+Kd 0.2500 0.2500 0.2700
+d 1.0000
+
+newmtl FutureTech.Materials.HexGlass_WithArrows_Team2_MIC_0
+Kd 0.8700 0.5700 0.3200
+d 0.7500
+
+newmtl Stadium_Assets.Materials.Grass_Base_Team1_MIC_1
+Kd 0.1700 0.2300 0.2700
+d 1.0000
+
+newmtl FutureTech.Materials.ForceField_Mat_0
+Kd 0.3000 0.6000 1.0000
+d 0.5000
+
+newmtl Stadium_Assets.Materials.Grass_Base_Team1_MIC_0
+Kd 0.1700 0.2300 0.2700
+d 1.0000
+
+newmtl FutureTech.Materials.TrimLight_Glow_Team1_MIC_1
+Kd 0.2200 0.1600 0.2200
+d 1.0000
+
+newmtl FutureTech.Materials.CrossHatched_Grate_MIC_1
+Kd 0.8000 0.3000 0.2000
+d 1.0000
+
+newmtl FutureTech.Materials.Frame_01_White_MIC_1
+Kd 0.7500 0.7500 0.7800
+d 1.0000
+
+newmtl FutureTech.Materials.Frame_01_MIC_1
+Kd 0.2200 0.1600 0.2200
+d 1.0000
+
+newmtl Goal.Materials.GoalGenerator_Team2_MIC_1
+Kd 1.0000 0.5000 0.1000
+d 1.0000
+
+newmtl FutureTech.Materials.TrimLight_Glow_Team1_MIC_-1
+Kd 0.2200 0.1600 0.2200
+d 1.0000
+
+newmtl FutureTech.Materials.Reflective_Floor_V2_Mat_-1
+Kd 0.3400 0.5300 0.7800
+d 1.0000
+
+newmtl FutureTech.Materials.Reflective_Floor_B_Mat_-1
+Kd 0.3400 0.5300 0.7800
+d 1.0000
+
+newmtl FutureTech.Materials.HexGlass_WithArrows_Team2_MIC_1
+Kd 0.8700 0.5700 0.3200
+d 0.7500
+
+newmtl FutureTech.Materials.TrimLight_None_Mat_0
+Kd 0.2200 0.1600 0.2200
+d 1.0000
+
+newmtl FutureTech.Materials.Reflective_Floor_B_Mat_1
+Kd 0.8700 0.5700 0.3200
+d 1.0000
+
+newmtl FutureTech.Materials.CrossHatched_Grate_TL_Mat_1
+Kd 0.8000 0.3000 0.2000
+d 1.0000
+
+newmtl Stadium_Assets.Materials.StadiumFog_Team2_MIC_0
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl FX_General.Mat.HotSpot_Mat_-1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl Goal.Materials.GoalGenerator_Team1_MIC_-1
+Kd 0.2000 0.5000 1.0000
+d 1.0000
+
+newmtl Classy.Materials.Statue_MAT_-1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl City.Materials.MIC_Sidewalk00_1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl Grass.Materials.Grass_Base_Blank_MIC_1
+Kd 0.1700 0.2300 0.2700
+d 1.0000
+
+newmtl FutureTech.Materials.Glass_Projected_V2_Mat_1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl Stadium.Materials.HandRail_MIC_1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl Stadium.Materials.SeatBase_Mat_0
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl Stadium.Materials.Stairs_Mat_0
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl City.Materials.MIC_Sidewalk00_0
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl City.Materials.Concrete_MAT_0
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl Grass.Materials.Grass_Base_Mat_0
+Kd 0.1700 0.2300 0.2700
+d 1.0000
+
+newmtl Stadium.Materials.SeatBase_Mat_1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl Stadium.Materials.Stairs_Mat_1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl City.Materials.Concrete_MAT_1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl Grass.Materials.Grass_Base_Mat_1
+Kd 0.1700 0.2300 0.2700
+d 1.0000
+
+newmtl FX_General.Mat.FogSheet_Team2_MIC_1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl FX_General.Mat.FogSheet_Team1_MIC_-1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl Stadium.Materials.StadiumLight_Flare_Mat_1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl FutureStadium_Assets.Materials.Scoreboard_MIC_1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl FutureTech.Materials.DarkMetal_LessShine_MIC_1
+Kd 0.2500 0.2500 0.2700
+d 1.0000
+
+newmtl FutureStadium_Assets.Materials.Scoreboard_MIC_-1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl City.Materials.ConcreteTrim_Dark_MAT_0
+Kd 0.2200 0.1600 0.2200
+d 1.0000
+
+newmtl Stadium.Materials.MetalBeam_SoftEdge_Lights_MIC_0
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl Stadium.Materials.Crowd_ST_Team1_Mic_1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl FutureTech.Materials.PaintedLine_Mat_-1
+Kd 0.9300 0.9400 0.9600
+d 1.0000
+
+newmtl FutureTech.Materials.PaintedLine_Mat_0
+Kd 0.9300 0.9400 0.9600
+d 1.0000
+
+newmtl City.Materials.ConcreteTrim_Dark_MAT_1
+Kd 0.2200 0.1600 0.2200
+d 1.0000
+
+newmtl City.Materials.ConcreteTrim_Dark_MAT_-1
+Kd 0.2200 0.1600 0.2200
+d 1.0000
+
+newmtl City.Materials.BuildingLight_Mat_-1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl FX_General.Mat.FogCylinder_Mat_-1
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl Adverts.Materials.4x1_C_MIC_-1
+Kd 0.7500 0.7500 0.7500
+d 1.0000
+
+newmtl Adverts.Materials.4x1_D_MIC_-1
+Kd 0.7500 0.7500 0.7500
+d 1.0000
+
+newmtl Adverts.Materials.Advert_StripSingle_05_MIC_0
+Kd 0.7500 0.7500 0.7500
+d 1.0000
+
+newmtl Adverts.Materials.Advert_StripSingle_06_MIC_0
+Kd 0.7500 0.7500 0.7500
+d 1.0000
+
+newmtl Adverts.Materials.4x1_A_MIC_0
+Kd 0.7500 0.7500 0.7500
+d 1.0000
+
+newmtl Adverts.Materials.4x1_C_MIC_0
+Kd 0.7500 0.7500 0.7500
+d 1.0000
+
+newmtl Adverts.Materials.4x1_B_MIC_0
+Kd 0.7500 0.7500 0.7500
+d 1.0000
+
+newmtl Adverts.Materials.4x1_D_MIC_0
+Kd 0.7500 0.7500 0.7500
+d 1.0000
+
+newmtl Adverts.Materials.2x1_B_MIC_1
+Kd 0.7500 0.7500 0.7500
+d 1.0000
+
+newmtl Adverts.Materials.Advert_StripSingle_05_MIC_1
+Kd 0.7500 0.7500 0.7500
+d 1.0000
+
+newmtl Adverts.Materials.Advert_StripSingle_06_MIC_1
+Kd 0.7500 0.7500 0.7500
+d 1.0000
+
+newmtl Adverts.Materials.4x1_A_MIC_1
+Kd 0.7500 0.7500 0.7500
+d 1.0000
+
+newmtl Adverts.Materials.4x1_C_MIC_1
+Kd 0.7500 0.7500 0.7500
+d 1.0000
+
+newmtl Adverts.Materials.4x1_B_MIC_1
+Kd 0.7500 0.7500 0.7500
+d 1.0000
+
+newmtl Adverts.Materials.4x1_D_MIC_1
+Kd 0.7500 0.7500 0.7500
+d 1.0000
+
+newmtl Adverts.Materials.2x1_A_MIC_-1
+Kd 0.7500 0.7500 0.7500
+d 1.0000
+
+newmtl CollisionMeshes.Collision_Mat_0
+Kd 0.5500 0.5500 0.5800
+d 1.0000
+
+newmtl Pickup_Boost.Materials.BoostPad_Large_MIC_1
+Kd 0.6500 0.1500 0.1000
+d 1.0000
+
+newmtl Pickup_Boost.Materials.BoostPad_Large_MIC_-1
+Kd 0.6500 0.1500 0.1000
+d 1.0000
+
+newmtl Pickup_Boost.Materials.BoostPad_Small_MIC_-1
+Kd 0.6500 0.1500 0.1000
+d 1.0000
+
+newmtl Pickup_Boost.Materials.BoostPad_Small_MIC_0
+Kd 0.6500 0.1500 0.1000
+d 1.0000
+
+newmtl Pickup_Boost.Materials.BoostPad_Small_MIC_1
+Kd 0.6500 0.1500 0.1000
+d 1.0000
+

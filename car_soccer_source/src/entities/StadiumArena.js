@@ -585,3 +585,42 @@ export async function loadStadiumContinuousBoundary(resolveContextFn = resolveCo
   return boundaryGroup;
 }
 
+
+/**
+ * Loads the authentic Rocket League stadium exported from RLViser
+ * (/assets/arena/stadium/rlviser_stadium.glb)
+ */
+export async function loadRLViserStadium(resolveContextFn = resolveContext) {
+  const ctx = resolveContextFn();
+  const { GLTFLoader } = ctx;
+  if (!GLTFLoader) return null;
+
+  const loader = new GLTFLoader();
+  let gltf = null;
+  const candidatePaths = [
+    "/assets/arena/stadium/rlviser_stadium.glb",
+    "/custom/assets/arena/rlviser_stadium.glb"
+  ];
+
+  for (const path of candidatePaths) {
+    try {
+      gltf = await loader.loadAsync(path);
+      if (gltf?.scene) break;
+    } catch {
+      // Try fallback path
+    }
+  }
+
+  if (!gltf?.scene) return null;
+  const stadium = gltf.scene;
+  stadium.name = "Stadium / RLViser Authentic Arena";
+
+  stadium.traverse((obj) => {
+    if (obj.isMesh) {
+      obj.castShadow = false;
+      obj.receiveShadow = true;
+    }
+  });
+
+  return stadium;
+}

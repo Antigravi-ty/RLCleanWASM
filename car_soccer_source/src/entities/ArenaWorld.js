@@ -59,7 +59,7 @@ import {
   applyVehicleMaterials
 } from './VehicleAssembly.js';
 import { BoostPadSystem } from './BoostPadSystem.js';
-import { loadStadiumContinuousBoundary, loadStadiumArchitecture } from './StadiumArena.js';
+import { loadStadiumContinuousBoundary, loadStadiumArchitecture, loadRLViserStadium } from './StadiumArena.js';
 import {
   DEFAULT_WHEEL_SPECS,
   getCarRestHeight,
@@ -775,6 +775,8 @@ export class ArenaWorld {
     this.carVisual = defaultCarVisual;
     this.stadium = null;
     this.stadiumVisible = true;
+    this.rlviserStadium = null;
+    this.rlviserStadiumVisible = true;
 
     this.scene.background = new Color(4679561);
     if (Fog) {
@@ -965,13 +967,17 @@ export class ArenaWorld {
 
   async loadArena() {
     try {
-      const [boundary, stadium] = await Promise.all([
+      const [boundary, stadium, rlviserStadium] = await Promise.all([
         loadStadiumContinuousBoundary(resolveContext).catch(err => {
           console.warn("Continuous stadium boundary failed to load:", err);
           return null;
         }),
         loadStadiumArchitecture(resolveContext).catch(err => {
           console.warn("Stadium architecture failed to load:", err);
+          return null;
+        }),
+        loadRLViserStadium(resolveContext).catch(err => {
+          console.warn("RLViser stadium failed to load:", err);
           return null;
         })
       ]);
@@ -981,14 +987,40 @@ export class ArenaWorld {
       }
       if (stadium) {
         this.stadium = stadium;
-        if (this.stadiumVisible) {
+        if (this.stadiumVisible && !this.rlviserStadiumVisible) {
           this.scene.add(stadium);
+        }
+      }
+      if (rlviserStadium) {
+        this.rlviserStadium = rlviserStadium;
+        if (this.rlviserStadiumVisible) {
+          this.scene.add(rlviserStadium);
+          if (this.turf) this.turf.visible = false;
         }
       }
     } catch (err) {
       console.warn("loadArena skipped:", err);
     }
     this.markRenderTreeChanged();
+  }
+
+  setRLViserStadiumVisible(visible) {
+    const val = !!visible;
+    if (this.rlviserStadiumVisible !== val) {
+      this.rlviserStadiumVisible = val;
+      if (this.rlviserStadium) {
+        if (val) {
+          this.scene.add(this.rlviserStadium);
+          if (this.turf) this.turf.visible = false;
+          if (this.stadium) this.stadium.removeFromParent?.();
+        } else {
+          this.rlviserStadium.removeFromParent?.();
+          if (this.turf) this.turf.visible = true;
+          if (this.stadium && this.stadiumVisible) this.scene.add(this.stadium);
+        }
+      }
+      this.markRenderTreeChanged();
+    }
   }
 
   setStadiumVisible(visible) {
@@ -998,6 +1030,21 @@ export class ArenaWorld {
         if (t) {
           visible ? this.scene.add(t) : t.removeFromParent?.();
         }
+      }
+      if (this.rlviserStadium) {
+        this.rlviserStadium.traverse((obj) => {
+          const n = obj.name || "";
+          if (
+            n.includes("Stadium_Base") ||
+            n.includes("Stadium_Top") ||
+            n.includes("SkyScraper") ||
+            n.includes("Statue") ||
+            n.includes("Stadium_Lights") ||
+            n.includes("Billboard")
+          ) {
+            obj.visible = visible;
+          }
+        });
       }
       const { Color } = resolveContext();
       this.scene.background = new Color(visible ? 4679561 : 0);
@@ -1748,7 +1795,8 @@ export class ArenaWorld {
 
 export {
   loadStadiumContinuousBoundary,
-  loadStadiumArchitecture
+  loadStadiumArchitecture,
+  loadRLViserStadium
 };
 
 export {
