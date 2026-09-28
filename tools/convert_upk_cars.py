@@ -1,149 +1,432 @@
 #!/usr/bin/env python3
 """
-Rocket League Car UPK/PSK to GLB Converter
-Extracts meshes and textures from Rocket League UPK packages using UEViewer (umodel)
-and compiles standardized .glb models with UVs and authentic textures for RLCleanWASM.
+Rocket League Car UPK to GLB Converter
+Extracts meshes and textures from Rocket League UPK packages using UEViewer (umodel) and compiles
+clean standardized .glb models positioned and scaled for RLCleanWASM.
+
+Supports:
+- Basic unified whitebox/grey models
+- Paintable multi-material submesh models with embedded textures (body-shell, lower-detail, lamps)
+  enabling dynamic color changes in RLCleanWASM VehicleAssembly.js.
 """
 
 import os
 import sys
-import struct
+import argparse
 import numpy as np
-import trimesh
+import pygltflib
 from PIL import Image
+import io
 
-class MeshBuilder:
-    def __init__(self):
-        self.vertices = []
-        self.faces = []
-        self.uvs = []
+def align_4(b):
+    pad = (4 - (len(b) % 4)) % 4
+    return b + b'\x00' * pad
 
-    def parse_psk(self, filepath):
-        """Parse ActorX .psk / .pskx binary format."""
-        with open(filepath, "rb") as f:
-            data = f.read()
+def extract_primitive_data(gltf, prim, bin_data):
+    pos_acc = gltf.accessors[prim.attributes.POSITION]
+    pos_bv = gltf.bufferViews[pos_acc.bufferView]
+    pos_start = (pos_bv.byteOffset or 0) + (pos_acc.byteOffset or 0)
+    pos_count = pos_acc.count
+    positions = np.frombuffer(bin_data[pos_start : pos_start + pos_count * 12], dtype=np.float32).reshape(-1, 3).copy()
+    # Scale from meters (UEViewer gltf standard) to centimeters (Rocket League units)
+    positions *= 100.0
 
-        offset = 0
-        chunks = {}
-        while offset < len(data):
-            chunk_id = data[offset : offset + 20].decode("ascii", errors="ignore").strip("\x00")
-            type_flag, data_size, data_count = struct.unpack_from("<iii", data, offset + 20)
-            offset += 32
-            chunks[chunk_id] = (offset, data_size, data_count)
-            offset += data_size * data_count
+    normals = None
+    if prim.attributes.NORMAL is not None:
+        norm_acc = gltf.accessors[prim.attributes.NORMAL]
+        norm_bv = gltf.bufferViews[norm_acc.bufferView]
+        norm_start = (norm_bv.byteOffset or 0) + (norm_acc.byteOffset or 0)
+        normals = np.frombuffer(bin_data[norm_start : norm_start + norm_acc.count * 12], dtype=np.float32).reshape(-1, 3).copy()
 
-        if "PNTS0000" not in chunks or ("VTXW0000" not in chunks and "3DGW0000" not in chunks):
-            raise ValueError(f"Invalid PSK file: missing points or wedges in {filepath}")
+    uvs = None
+    if prim.attributes.TEXCOORD_0 is not None:
+        uv_acc = gltf.accessors[prim.attributes.TEXCOORD_0]
+        uv_bv = gltf.bufferViews[uv_acc.bufferView]
+        uv_start = (uv_bv.byteOffset or 0) + (uv_acc.byteOffset or 0)
+        uvs = np.frombuffer(bin_data[uv_start : uv_start + uv_acc.count * 8], dtype=np.float32).reshape(-1, 2).copy()
 
-        # Parse Points
-        p_off, p_sz, p_cnt = chunks["PNTS0000"]
-        points = []
-        for i in range(p_cnt):
-            px, py, pz = struct.unpack_from("<fff", data, p_off + i * p_sz)
-            # Transform from UE3 (X: Forward, Y: Right, Z: Up)
-            # to Three.js / RLCleanWASM standard (X: Forward, Y: Up, Z: -Right)
-            points.append([px, pz, -py])
-        points = np.array(points, dtype=np.float32)
+    ind_acc = gltf.accessors[prim.indices]
+    ind_bv = gltf.bufferViews[ind_acc.bufferView]
+    ind_start = (ind_bv.byteOffset or 0) + (ind_acc.byteOffset or 0)
+    if ind_acc.componentType == 5123: # UNSIGNED_SHORT
+        indices = np.frombuffer(bin_data[ind_start : ind_start + ind_acc.count * 2], dtype=np.uint16).astype(np.uint32)
+    elif ind_acc.componentType == 5125: # UNSIGNED_INT
+        indices = np.frombuffer(bin_data[ind_start : ind_start + ind_acc.count * 4], dtype=np.uint32).copy()
+    else:
+        indices = None
 
-        # Parse Wedges
-        w_chunk_id = "VTXW0000" if "VTXW0000" in chunks else "3DGW0000"
-        w_off, w_sz, w_cnt = chunks[w_chunk_id]
-        wedges = []
-        for i in range(w_cnt):
-            if w_sz == 16:
-                p_idx, u, v = struct.unpack_from("<Iff", data, w_off + i * w_sz)
-            elif w_sz == 20:
-                p_idx, u, v = struct.unpack_from("<Iff", data, w_off + i * w_sz)
+    return {
+        'positions': positions,
+        'normals': normals,
+        'uvs': uvs,
+        'indices': indices
+    }
+
+def make_painted_texture(bs_path, primary_rgb=(25, 110, 220), trim_rgb=(35, 38, 42)):
+    if not os.path.exists(bs_path):
+        # Fallback to solid image
+        im = Image.new('RGB', (256, 256), primary_rgb)
+        return im
+    bs = Image.open(bs_path).convert('RGB')
+    bs_arr = np.array(bs).astype(np.float32) / 255.0
+    r_mask = bs_arr[:, :, 0:1] # primary paint mask
+    g_mask = bs_arr[:, :, 1:2] # secondary / accent mask
+    b_mask = bs_arr[:, :, 2:3] # carbon / detail mask
+    
+    primary = np.array(primary_rgb).reshape(1, 1, 3).astype(np.float32)
+    secondary = np.array([240, 240, 245]).reshape(1, 1, 3).astype(np.float32)
+    trim = np.array(trim_rgb).reshape(1, 1, 3).astype(np.float32)
+    
+    out = trim * (1.0 - np.clip(r_mask + g_mask, 0.0, 1.0))
+    out += primary * r_mask
+    out += secondary * g_mask
+    out = np.clip(out * (1.0 - 0.2 * b_mask), 0, 255).astype(np.uint8)
+    return Image.fromarray(out).resize((512, 512), Image.Resampling.LANCZOS)
+
+def create_car_glb(parts, output_path, car_name):
+    gltf = pygltflib.GLTF2()
+    blob = bytearray()
+
+    buffer_views = []
+    accessors = []
+    materials = []
+    textures = []
+    images = []
+    samplers = []
+    meshes = []
+    nodes = []
+
+    sampler = pygltflib.Sampler(
+        magFilter=pygltflib.LINEAR,
+        minFilter=pygltflib.LINEAR_MIPMAP_LINEAR,
+        wrapS=pygltflib.REPEAT,
+        wrapT=pygltflib.REPEAT
+    )
+    samplers.append(sampler)
+    image_cache = {}
+
+    for part in parts:
+        mat_idx = len(materials)
+        tex_idx = None
+
+        if part.get('image_png_bytes'):
+            img_bytes = part['image_png_bytes']
+            if img_bytes in image_cache:
+                tex_idx = image_cache[img_bytes]
             else:
-                p_idx, u, v = struct.unpack_from("<Hff", data, w_off + i * w_sz)
-            wedges.append((p_idx, u, v))
+                img_offset = len(blob)
+                blob.extend(align_4(img_bytes))
+                img_bv_idx = len(buffer_views)
+                buffer_views.append(pygltflib.BufferView(
+                    buffer=0,
+                    byteOffset=img_offset,
+                    byteLength=len(img_bytes)
+                ))
+                img_idx = len(images)
+                images.append(pygltflib.Image(
+                    bufferView=img_bv_idx,
+                    mimeType="image/png",
+                    name=f"{part['name']}-image"
+                ))
+                tex_idx = len(textures)
+                textures.append(pygltflib.Texture(
+                    sampler=0,
+                    source=img_idx
+                ))
+                image_cache[img_bytes] = tex_idx
 
-        # Parse Faces
-        f_chunk_id = "FACE0000" if "FACE0000" in chunks else "FACE3200"
-        if f_chunk_id not in chunks:
-            raise ValueError(f"Invalid PSK file: missing faces in {filepath}")
-        f_off, f_sz, f_cnt = chunks[f_chunk_id]
-        faces = []
-        for i in range(f_cnt):
-            if f_chunk_id == "FACE3200" or f_sz >= 16:
-                w0, w1, w2 = struct.unpack_from("<III", data, f_off + i * f_sz)
-            else:
-                w0, w1, w2 = struct.unpack_from("<HHH", data, f_off + i * f_sz)
-            # Reverse winding [w0, w2, w1] for glTF CCW standard
-            faces.append((w0, w2, w1))
+        pbr = pygltflib.PbrMetallicRoughness(
+            baseColorFactor=part.get('base_color_factor', [1.0, 1.0, 1.0, 1.0]),
+            roughnessFactor=part.get('roughness_factor', 0.5),
+            metallicFactor=part.get('metallic_factor', 0.1)
+        )
+        if tex_idx is not None:
+            pbr.baseColorTexture = pygltflib.TextureInfo(index=tex_idx, texCoord=0)
 
-        return points, wedges, faces
+        mat = pygltflib.Material(
+            name=part['material_name'],
+            pbrMetallicRoughness=pbr
+        )
+        if part.get('emissive_factor'):
+            mat.emissiveFactor = part['emissive_factor']
+        materials.append(mat)
 
-    def add_mesh(self, filepath):
-        """Add and append a PSK/PSKX mesh to builder."""
-        points, wedges, faces = self.parse_psk(filepath)
-        base_v_idx = len(self.vertices)
+        ind_bytes = part['indices'].astype(np.uint32).tobytes()
+        ind_offset = len(blob)
+        blob.extend(align_4(ind_bytes))
+        ind_bv_idx = len(buffer_views)
+        buffer_views.append(pygltflib.BufferView(
+            buffer=0,
+            byteOffset=ind_offset,
+            byteLength=len(ind_bytes),
+            target=pygltflib.ELEMENT_ARRAY_BUFFER
+        ))
+        ind_acc_idx = len(accessors)
+        accessors.append(pygltflib.Accessor(
+            bufferView=ind_bv_idx,
+            byteOffset=0,
+            componentType=pygltflib.UNSIGNED_INT,
+            count=len(part['indices']),
+            type=pygltflib.SCALAR,
+            max=[int(part['indices'].max())],
+            min=[int(part['indices'].min())]
+        ))
 
-        for p_idx, u, v in wedges:
-            pos = points[p_idx]
-            self.vertices.append(pos)
-            # trimesh inverts V during glTF export, so passing (1.0 - v) preserves original v
-            self.uvs.append([u, 1.0 - v])
+        pos = part['positions'].astype(np.float32)
+        pos_bytes = pos.tobytes()
+        pos_offset = len(blob)
+        blob.extend(align_4(pos_bytes))
+        pos_bv_idx = len(buffer_views)
+        buffer_views.append(pygltflib.BufferView(
+            buffer=0,
+            byteOffset=pos_offset,
+            byteLength=len(pos_bytes),
+            target=pygltflib.ARRAY_BUFFER
+        ))
+        pos_acc_idx = len(accessors)
+        accessors.append(pygltflib.Accessor(
+            bufferView=pos_bv_idx,
+            byteOffset=0,
+            componentType=pygltflib.FLOAT,
+            count=len(pos),
+            type=pygltflib.VEC3,
+            max=pos.max(axis=0).tolist(),
+            min=pos.min(axis=0).tolist()
+        ))
 
-        for w0, w1, w2 in faces:
-            self.faces.append([base_v_idx + w0, base_v_idx + w1, base_v_idx + w2])
+        attributes = pygltflib.Attributes(POSITION=pos_acc_idx)
 
-        print(f"Added {filepath}: {len(wedges)} wedges, {len(faces)} faces (Total vertices: {len(self.vertices)})")
+        if part.get('normals') is not None:
+            norm = part['normals'].astype(np.float32)
+            norm_bytes = norm.tobytes()
+            norm_offset = len(blob)
+            blob.extend(align_4(norm_bytes))
+            norm_bv_idx = len(buffer_views)
+            buffer_views.append(pygltflib.BufferView(
+                buffer=0,
+                byteOffset=norm_offset,
+                byteLength=len(norm_bytes),
+                target=pygltflib.ARRAY_BUFFER
+            ))
+            norm_acc_idx = len(accessors)
+            accessors.append(pygltflib.Accessor(
+                bufferView=norm_bv_idx,
+                byteOffset=0,
+                componentType=pygltflib.FLOAT,
+                count=len(norm),
+                type=pygltflib.VEC3,
+                max=norm.max(axis=0).tolist(),
+                min=norm.min(axis=0).tolist()
+            ))
+            attributes.NORMAL = norm_acc_idx
 
-    def build_glb(self, output_path, texture_path=None):
-        """Build and export GLB file with UVs and material texture."""
-        verts_arr = np.array(self.vertices, dtype=np.float32)
-        faces_arr = np.array(self.faces, dtype=np.int32)
-        uvs_arr = np.array(self.uvs, dtype=np.float32)
+        if part.get('uvs') is not None:
+            uv = part['uvs'].astype(np.float32)
+            uv_bytes = uv.tobytes()
+            uv_offset = len(blob)
+            blob.extend(align_4(uv_bytes))
+            uv_bv_idx = len(buffer_views)
+            buffer_views.append(pygltflib.BufferView(
+                buffer=0,
+                byteOffset=uv_offset,
+                byteLength=len(uv_bytes),
+                target=pygltflib.ARRAY_BUFFER
+            ))
+            uv_acc_idx = len(accessors)
+            accessors.append(pygltflib.Accessor(
+                bufferView=uv_bv_idx,
+                byteOffset=0,
+                componentType=pygltflib.FLOAT,
+                count=len(uv),
+                type=pygltflib.VEC2,
+                max=uv.max(axis=0).tolist(),
+                min=uv.min(axis=0).tolist()
+            ))
+            attributes.TEXCOORD_0 = uv_acc_idx
 
-        if texture_path and os.path.exists(texture_path):
-            tex_img = Image.open(texture_path).convert("RGBA")
-        else:
-            tex_img = Image.new("RGBA", (2, 2), (100, 100, 100, 255))
-
-        pbr_mat = trimesh.visual.material.PBRMaterial(
-            baseColorFactor=[0.4, 0.4, 0.4, 1.0],
-            roughnessFactor=0.9036020036098448,
-            doubleSided=False,
-            baseColorTexture=tex_img
+        prim = pygltflib.Primitive(
+            attributes=attributes,
+            indices=ind_acc_idx,
+            material=mat_idx,
+            mode=pygltflib.TRIANGLES
         )
 
-        visual = trimesh.visual.TextureVisuals(uv=uvs_arr, material=pbr_mat)
-        mesh = trimesh.Trimesh(vertices=verts_arr, faces=faces_arr, visual=visual, validate=False)
+        mesh_idx = len(meshes)
+        meshes.append(pygltflib.Mesh(
+            name=part['name'],
+            primitives=[prim]
+        ))
 
-        os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
-        glb_data = mesh.export(file_type="glb")
-        with open(output_path, "wb") as f:
-            f.write(glb_data)
+        node_idx = len(nodes)
+        nodes.append(pygltflib.Node(
+            name=part['name'],
+            mesh=mesh_idx
+        ))
 
-        file_size_kb = os.path.getsize(output_path) / 1024
-        print(f"[SUCCESS] Exported GLB -> {output_path} ({file_size_kb:.1f} KB)")
-        print(f"  Bounds: min={mesh.bounds[0].tolist()}, max={mesh.bounds[1].tolist()}")
-        print(f"  Faces: {len(faces_arr)}, Vertices: {len(verts_arr)}")
-        return output_path
+    root_node_idx = len(nodes)
+    child_indices = list(range(len(nodes)))
+    nodes.append(pygltflib.Node(
+        name=car_name,
+        children=child_indices
+    ))
 
-def build_all():
-    # 1. Sentinel (Plank hitbox)
-    chip_builder = MeshBuilder()
-    chip_builder.add_mesh("/tmp/export_test/chip/body_chip_SF/SkeletalMesh3/Body_Chip_SK.psk")
-    chip_builder.add_mesh("/tmp/export_test/chip/body_chip_SF/StaticMesh3/Chip_Lenses.pskx")
-    chip_tex = "/tmp/export_tex_dds/body_chip_SF/Texture2D/Body_Chip_D.dds"
-    chip_builder.build_glb("custom/assets/cars/sentinel.glb", chip_tex)
-    chip_builder.build_glb("custom/assets/cars/sentinel_plank.glb", chip_tex)
+    scene = pygltflib.Scene(nodes=[root_node_idx])
 
-    # 2. Insidio (Hybrid hitbox)
-    peach_builder = MeshBuilder()
-    peach_builder.add_mesh("/tmp/export_test/peach/body_peach_SF/SkeletalMesh3/Body_Peach_Blockout.psk")
-    peach_tex = "/tmp/export_tex_dds/peach/body_peach_SF/Texture2D/Peach_Body_Change_D.dds"
-    peach_builder.build_glb("custom/assets/cars/insidio.glb", peach_tex)
-    peach_builder.build_glb("custom/assets/cars/insidio_hybrid.glb", peach_tex)
+    gltf.buffers = [pygltflib.Buffer(byteLength=len(blob))]
+    gltf.bufferViews = buffer_views
+    gltf.accessors = accessors
+    gltf.materials = materials
+    gltf.textures = textures
+    gltf.images = images
+    gltf.samplers = samplers
+    gltf.meshes = meshes
+    gltf.nodes = nodes
+    gltf.scenes = [scene]
+    gltf.scene = 0
 
-    # 3. Scarab (Octane hitbox)
-    scarab_builder = MeshBuilder()
-    scarab_builder.add_mesh("/tmp/export_test/scarab/Body_Scarab_SF/SkeletalMesh3/Body_Scarab_SK.psk")
-    scarab_tex = "/tmp/export_tex_dds/scarab/Body_Scarab_SF/Texture2D/Scarab_Body00_D.dds"
-    scarab_builder.build_glb("custom/assets/cars/scarab.glb", scarab_tex)
-    scarab_builder.build_glb("custom/assets/cars/scarab_octane.glb", scarab_tex)
+    gltf.set_binary_blob(bytes(blob))
+    os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+    gltf.save(output_path)
+    print(f"[SUCCESS] Exported -> {output_path} ({os.path.getsize(output_path)} bytes)")
 
 if __name__ == "__main__":
-    build_all()
+    parser = argparse.ArgumentParser(description="Build Rocket League car GLB models")
+    parser.add_argument("--chip-dir", help="Path to exported body_chip_SF gltf folder")
+    parser.add_argument("--peach-dir", help="Path to exported body_peach_SF gltf folder")
+    parser.add_argument("--scarab-dir", help="Path to exported Body_Scarab_SF gltf folder")
+    parser.add_argument("--output-dir", default="custom/assets/cars", help="Output directory")
+    args = parser.parse_args()
+
+    out = args.output_dir
+    os.makedirs(out, exist_ok=True)
+
+    if args.chip_dir:
+        sk_path = os.path.join(args.chip_dir, "SkeletalMesh3/Body_Chip_SK.gltf")
+        lens_path = os.path.join(args.chip_dir, "StaticMesh3/Chip_Lenses.gltf")
+        if os.path.exists(sk_path) and os.path.exists(lens_path):
+            sk_gltf = pygltflib.GLTF2().load(sk_path)
+            sk_bin = open(os.path.join(os.path.dirname(sk_path), sk_gltf.buffers[0].uri), 'rb').read()
+            lens_gltf = pygltflib.GLTF2().load(lens_path)
+            lens_bin = open(os.path.join(os.path.dirname(lens_path), lens_gltf.buffers[0].uri), 'rb').read()
+
+            chassis_data = extract_primitive_data(sk_gltf, sk_gltf.meshes[0].primitives[0], sk_bin)
+            body_data = extract_primitive_data(sk_gltf, sk_gltf.meshes[0].primitives[1], sk_bin)
+            lens_data = extract_primitive_data(lens_gltf, lens_gltf.meshes[0].primitives[0], lens_bin)
+
+            body_tex_path = os.path.join(args.chip_dir, "Texture2D/Body_Chip_Blankskin.png")
+            chassis_tex_path = os.path.join(args.chip_dir, "Texture2D/Chassis_Chip_D.png")
+
+            im_body = make_painted_texture(body_tex_path)
+            body_buf = io.BytesIO()
+            im_body.save(body_buf, format='PNG')
+
+            im_chassis = Image.open(chassis_tex_path).convert('RGBA').resize((512, 512), Image.Resampling.LANCZOS) if os.path.exists(chassis_tex_path) else Image.new('RGB', (256, 256), (35, 38, 42))
+            chassis_buf = io.BytesIO()
+            im_chassis.save(chassis_buf, format='PNG')
+
+            parts = [
+                {
+                    'name': 'body-shell',
+                    'positions': body_data['positions'],
+                    'normals': body_data['normals'],
+                    'uvs': body_data['uvs'],
+                    'indices': body_data['indices'],
+                    'material_name': 'body-shell',
+                    'base_color_factor': [1.0, 1.0, 1.0, 1.0],
+                    'roughness_factor': 0.35,
+                    'metallic_factor': 0.3,
+                    'image_png_bytes': body_buf.getvalue()
+                },
+                {
+                    'name': 'lower-detail',
+                    'positions': chassis_data['positions'],
+                    'normals': chassis_data['normals'],
+                    'uvs': chassis_data['uvs'],
+                    'indices': chassis_data['indices'],
+                    'material_name': 'lower-detail',
+                    'base_color_factor': [0.85, 0.85, 0.85, 1.0],
+                    'roughness_factor': 0.7,
+                    'metallic_factor': 0.6,
+                    'image_png_bytes': chassis_buf.getvalue()
+                },
+                {
+                    'name': 'lamps',
+                    'positions': lens_data['positions'],
+                    'normals': lens_data['normals'],
+                    'uvs': lens_data['uvs'],
+                    'indices': lens_data['indices'],
+                    'material_name': 'lamps',
+                    'base_color_factor': [0.8, 0.9, 1.0, 0.8],
+                    'roughness_factor': 0.1,
+                    'metallic_factor': 0.1,
+                    'emissive_factor': [0.3, 0.4, 0.6]
+                }
+            ]
+
+            create_car_glb(parts, os.path.join(out, "sentinel_painted.glb"), "Sentinel")
+            create_car_glb(parts, os.path.join(out, "sentinel_plank_painted.glb"), "Sentinel")
+            create_car_glb(parts, os.path.join(out, "chip_painted.glb"), "Sentinel")
+
+    if args.peach_dir:
+        sk_path = os.path.join(args.peach_dir, "SkeletalMesh3/Body_Peach_Blockout.gltf")
+        if os.path.exists(sk_path):
+            sk_gltf = pygltflib.GLTF2().load(sk_path)
+            sk_bin = open(os.path.join(os.path.dirname(sk_path), sk_gltf.buffers[0].uri), 'rb').read()
+
+            chassis_data = extract_primitive_data(sk_gltf, sk_gltf.meshes[0].primitives[0], sk_bin)
+            lamps_data = extract_primitive_data(sk_gltf, sk_gltf.meshes[0].primitives[1], sk_bin)
+            body_data = extract_primitive_data(sk_gltf, sk_gltf.meshes[0].primitives[2], sk_bin)
+
+            body_tex_path = os.path.join(args.peach_dir, "Texture2D/Peach_Body_BS.png")
+            chassis_tex_path = os.path.join(args.peach_dir, "Texture2D/PeachChassis_D.png")
+
+            im_body = make_painted_texture(body_tex_path)
+            body_buf = io.BytesIO()
+            im_body.save(body_buf, format='PNG')
+
+            im_chassis = Image.open(chassis_tex_path).convert('RGB').resize((512, 512), Image.Resampling.LANCZOS) if os.path.exists(chassis_tex_path) else Image.new('RGB', (256, 256), (35, 38, 42))
+            chassis_buf = io.BytesIO()
+            im_chassis.save(chassis_buf, format='PNG')
+
+            parts = [
+                {
+                    'name': 'body-shell',
+                    'positions': body_data['positions'],
+                    'normals': body_data['normals'],
+                    'uvs': body_data['uvs'],
+                    'indices': body_data['indices'],
+                    'material_name': 'body-shell',
+                    'base_color_factor': [1.0, 1.0, 1.0, 1.0],
+                    'roughness_factor': 0.35,
+                    'metallic_factor': 0.3,
+                    'image_png_bytes': body_buf.getvalue()
+                },
+                {
+                    'name': 'lower-detail',
+                    'positions': chassis_data['positions'],
+                    'normals': chassis_data['normals'],
+                    'uvs': chassis_data['uvs'],
+                    'indices': chassis_data['indices'],
+                    'material_name': 'lower-detail',
+                    'base_color_factor': [0.85, 0.85, 0.85, 1.0],
+                    'roughness_factor': 0.7,
+                    'metallic_factor': 0.6,
+                    'image_png_bytes': chassis_buf.getvalue()
+                },
+                {
+                    'name': 'lamps',
+                    'positions': lamps_data['positions'],
+                    'normals': lamps_data['normals'],
+                    'uvs': lamps_data['uvs'],
+                    'indices': lamps_data['indices'],
+                    'material_name': 'lamps',
+                    'base_color_factor': [0.8, 0.9, 1.0, 0.8],
+                    'roughness_factor': 0.1,
+                    'metallic_factor': 0.1,
+                    'emissive_factor': [0.3, 0.4, 0.6]
+                }
+            ]
+
+            create_car_glb(parts, os.path.join(out, "insidio_painted.glb"), "Insidio")
+            create_car_glb(parts, os.path.join(out, "insidio_hybrid_painted.glb"), "Insidio")
+            create_car_glb(parts, os.path.join(out, "peach_painted.glb"), "Insidio")
