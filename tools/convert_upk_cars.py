@@ -1,82 +1,149 @@
 #!/usr/bin/env python3
 """
-Rocket League Car UPK to GLB Converter
-Extracts meshes from Rocket League UPK packages using UEViewer (umodel) and compiles
-clean standardized .glb models positioned and scaled for RLCleanWASM.
+Rocket League Car UPK/PSK to GLB Converter
+Extracts meshes and textures from Rocket League UPK packages using UEViewer (umodel)
+and compiles standardized .glb models with UVs and authentic textures for RLCleanWASM.
 """
 
 import os
 import sys
-import argparse
+import struct
+import numpy as np
 import trimesh
+from PIL import Image
 
-def build_car_model(gltf_paths, output_glb_path, car_name):
-    meshes = []
-    for p in gltf_paths:
-        if not os.path.exists(p):
-            print(f"[WARN] File not found: {p}")
-            continue
-        loaded = trimesh.load(p)
-        if isinstance(loaded, trimesh.Scene):
-            for g in loaded.geometry.values():
-                meshes.append(g)
-        elif isinstance(loaded, trimesh.Trimesh):
-            meshes.append(loaded)
+class MeshBuilder:
+    def __init__(self):
+        self.vertices = []
+        self.faces = []
+        self.uvs = []
 
-    if not meshes:
-        raise ValueError(f"No meshes loaded for {car_name}")
+    def parse_psk(self, filepath):
+        """Parse ActorX .psk / .pskx binary format."""
+        with open(filepath, "rb") as f:
+            data = f.read()
 
-    combined = trimesh.util.concatenate(meshes)
-    # Scale from meters (UEViewer gltf standard) to centimeters (Rocket League units)
-    combined.apply_scale(100.0)
+        offset = 0
+        chunks = {}
+        while offset < len(data):
+            chunk_id = data[offset : offset + 20].decode("ascii", errors="ignore").strip("\x00")
+            type_flag, data_size, data_count = struct.unpack_from("<iii", data, offset + 20)
+            offset += 32
+            chunks[chunk_id] = (offset, data_size, data_count)
+            offset += data_size * data_count
 
-    # Standardized PBR material matching existing custom car models
-    mat = trimesh.visual.material.PBRMaterial(
-        name=f"MAT_{car_name}",
-        baseColorFactor=[102, 102, 102, 255],
-        roughnessFactor=0.903602,
-        metallicFactor=0.1
-    )
-    combined.visual.material = mat
+        if "PNTS0000" not in chunks or ("VTXW0000" not in chunks and "3DGW0000" not in chunks):
+            raise ValueError(f"Invalid PSK file: missing points or wedges in {filepath}")
 
-    print(f"[{car_name}] Vertices: {len(combined.vertices)}, Faces: {len(combined.faces)}")
-    print(f"[{car_name}] Bounds: {combined.bounds.tolist()}")
+        # Parse Points
+        p_off, p_sz, p_cnt = chunks["PNTS0000"]
+        points = []
+        for i in range(p_cnt):
+            px, py, pz = struct.unpack_from("<fff", data, p_off + i * p_sz)
+            # Transform from UE3 (X: Forward, Y: Right, Z: Up)
+            # to Three.js / RLCleanWASM standard (X: Forward, Y: Up, Z: -Right)
+            points.append([px, pz, -py])
+        points = np.array(points, dtype=np.float32)
 
-    os.makedirs(os.path.dirname(os.path.abspath(output_glb_path)), exist_ok=True)
-    glb_data = combined.export(file_type='glb')
-    with open(output_glb_path, "wb") as f:
-        f.write(glb_data)
-    print(f"[SUCCESS] Exported -> {output_glb_path} ({len(glb_data)} bytes)")
+        # Parse Wedges
+        w_chunk_id = "VTXW0000" if "VTXW0000" in chunks else "3DGW0000"
+        w_off, w_sz, w_cnt = chunks[w_chunk_id]
+        wedges = []
+        for i in range(w_cnt):
+            if w_sz == 16:
+                p_idx, u, v = struct.unpack_from("<Iff", data, w_off + i * w_sz)
+            elif w_sz == 20:
+                p_idx, u, v = struct.unpack_from("<Iff", data, w_off + i * w_sz)
+            else:
+                p_idx, u, v = struct.unpack_from("<Hff", data, w_off + i * w_sz)
+            wedges.append((p_idx, u, v))
+
+        # Parse Faces
+        f_chunk_id = "FACE0000" if "FACE0000" in chunks else "FACE3200"
+        if f_chunk_id not in chunks:
+            raise ValueError(f"Invalid PSK file: missing faces in {filepath}")
+        f_off, f_sz, f_cnt = chunks[f_chunk_id]
+        faces = []
+        for i in range(f_cnt):
+            if f_chunk_id == "FACE3200" or f_sz >= 16:
+                w0, w1, w2 = struct.unpack_from("<III", data, f_off + i * f_sz)
+            else:
+                w0, w1, w2 = struct.unpack_from("<HHH", data, f_off + i * f_sz)
+            # Reverse winding [w0, w2, w1] for glTF CCW standard
+            faces.append((w0, w2, w1))
+
+        return points, wedges, faces
+
+    def add_mesh(self, filepath):
+        """Add and append a PSK/PSKX mesh to builder."""
+        points, wedges, faces = self.parse_psk(filepath)
+        base_v_idx = len(self.vertices)
+
+        for p_idx, u, v in wedges:
+            pos = points[p_idx]
+            self.vertices.append(pos)
+            # trimesh inverts V during glTF export, so passing (1.0 - v) preserves original v
+            self.uvs.append([u, 1.0 - v])
+
+        for w0, w1, w2 in faces:
+            self.faces.append([base_v_idx + w0, base_v_idx + w1, base_v_idx + w2])
+
+        print(f"Added {filepath}: {len(wedges)} wedges, {len(faces)} faces (Total vertices: {len(self.vertices)})")
+
+    def build_glb(self, output_path, texture_path=None):
+        """Build and export GLB file with UVs and material texture."""
+        verts_arr = np.array(self.vertices, dtype=np.float32)
+        faces_arr = np.array(self.faces, dtype=np.int32)
+        uvs_arr = np.array(self.uvs, dtype=np.float32)
+
+        if texture_path and os.path.exists(texture_path):
+            tex_img = Image.open(texture_path).convert("RGBA")
+        else:
+            tex_img = Image.new("RGBA", (2, 2), (100, 100, 100, 255))
+
+        pbr_mat = trimesh.visual.material.PBRMaterial(
+            baseColorFactor=[0.4, 0.4, 0.4, 1.0],
+            roughnessFactor=0.9036020036098448,
+            doubleSided=False,
+            baseColorTexture=tex_img
+        )
+
+        visual = trimesh.visual.TextureVisuals(uv=uvs_arr, material=pbr_mat)
+        mesh = trimesh.Trimesh(vertices=verts_arr, faces=faces_arr, visual=visual, validate=False)
+
+        os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+        glb_data = mesh.export(file_type="glb")
+        with open(output_path, "wb") as f:
+            f.write(glb_data)
+
+        file_size_kb = os.path.getsize(output_path) / 1024
+        print(f"[SUCCESS] Exported GLB -> {output_path} ({file_size_kb:.1f} KB)")
+        print(f"  Bounds: min={mesh.bounds[0].tolist()}, max={mesh.bounds[1].tolist()}")
+        print(f"  Faces: {len(faces_arr)}, Vertices: {len(verts_arr)}")
+        return output_path
+
+def build_all():
+    # 1. Sentinel (Plank hitbox)
+    chip_builder = MeshBuilder()
+    chip_builder.add_mesh("/tmp/export_test/chip/body_chip_SF/SkeletalMesh3/Body_Chip_SK.psk")
+    chip_builder.add_mesh("/tmp/export_test/chip/body_chip_SF/StaticMesh3/Chip_Lenses.pskx")
+    chip_tex = "/tmp/export_tex_dds/body_chip_SF/Texture2D/Body_Chip_D.dds"
+    chip_builder.build_glb("custom/assets/cars/sentinel.glb", chip_tex)
+    chip_builder.build_glb("custom/assets/cars/sentinel_plank.glb", chip_tex)
+
+    # 2. Insidio (Hybrid hitbox)
+    peach_builder = MeshBuilder()
+    peach_builder.add_mesh("/tmp/export_test/peach/body_peach_SF/SkeletalMesh3/Body_Peach_Blockout.psk")
+    peach_tex = "/tmp/export_tex_dds/peach/body_peach_SF/Texture2D/Peach_Body_Change_D.dds"
+    peach_builder.build_glb("custom/assets/cars/insidio.glb", peach_tex)
+    peach_builder.build_glb("custom/assets/cars/insidio_hybrid.glb", peach_tex)
+
+    # 3. Scarab (Octane hitbox)
+    scarab_builder = MeshBuilder()
+    scarab_builder.add_mesh("/tmp/export_test/scarab/Body_Scarab_SF/SkeletalMesh3/Body_Scarab_SK.psk")
+    scarab_tex = "/tmp/export_tex_dds/scarab/Body_Scarab_SF/Texture2D/Scarab_Body00_D.dds"
+    scarab_builder.build_glb("custom/assets/cars/scarab.glb", scarab_tex)
+    scarab_builder.build_glb("custom/assets/cars/scarab_octane.glb", scarab_tex)
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Build Rocket League car GLB models")
-    parser.add_argument("--chip-dir", help="Path to exported body_chip_SF gltf folder")
-    parser.add_argument("--peach-dir", help="Path to exported body_peach_SF gltf folder")
-    parser.add_argument("--scarab-dir", help="Path to exported Body_Scarab_SF gltf folder")
-    parser.add_argument("--output-dir", default="custom/assets/cars", help="Output directory")
-    args = parser.parse_args()
-
-    out = args.output_dir
-    if args.chip_dir:
-        build_car_model([
-            os.path.join(args.chip_dir, "SkeletalMesh3/Body_Chip_SK.gltf"),
-            os.path.join(args.chip_dir, "StaticMesh3/Chip_Lenses.gltf")
-        ], os.path.join(out, "sentinel.glb"), "Sentinel")
-        build_car_model([
-            os.path.join(args.chip_dir, "SkeletalMesh3/Body_Chip_SK.gltf"),
-            os.path.join(args.chip_dir, "StaticMesh3/Chip_Lenses.gltf")
-        ], os.path.join(out, "sentinel_plank.glb"), "Sentinel")
-
-    if args.peach_dir:
-        build_car_model([
-            os.path.join(args.peach_dir, "SkeletalMesh3/Body_Peach_Blockout.gltf")
-        ], os.path.join(out, "insidio.glb"), "Insidio")
-        build_car_model([
-            os.path.join(args.peach_dir, "SkeletalMesh3/Body_Peach_Blockout.gltf")
-        ], os.path.join(out, "insidio_hybrid.glb"), "Insidio")
-
-    if args.scarab_dir:
-        build_car_model([
-            os.path.join(args.scarab_dir, "SkeletalMesh3/Body_Scarab_SK.gltf"),
-            os.path.join(args.scarab_dir, "StaticMesh3/Backfire_Boost.gltf")
-        ], os.path.join(out, "scarab.glb"), "Scarab")
+    build_all()
