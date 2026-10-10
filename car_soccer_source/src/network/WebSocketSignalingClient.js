@@ -90,6 +90,7 @@ export class WebSocketSignalingClient {
       }
 
       this.ws.onopen = () => {
+        console.log(`[WebSocketSignalingClient] 🌐 WebSocket open: room=${this.roomId}, role=${this.role}, peerId=${this.peerId}`);
         if (!isSettled) {
           isSettled = true;
           this.isConnected = true;
@@ -99,6 +100,7 @@ export class WebSocketSignalingClient {
       };
 
       this.ws.onerror = err => {
+        console.warn('[WebSocketSignalingClient] ⚠️ WebSocket error:', err);
         this.emit('error', err);
         if (!isSettled) {
           isSettled = true;
@@ -107,6 +109,7 @@ export class WebSocketSignalingClient {
       };
 
       this.ws.onclose = ev => {
+        console.log(`[WebSocketSignalingClient] 🔌 WebSocket closed: code=${ev.code}, reason=${ev.reason}`);
         this.isConnected = false;
         this.emit('close', ev);
         if (!isSettled) {

@@ -332,8 +332,10 @@ const FloatingWindowInstance: React.FC<FloatingWindowInstanceProps> = ({
         position: 'absolute',
         top: 0,
         left: 0,
+        fontFamily: '"SF Mono", "JetBrains Mono", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
       }}
-      className={`pointer-events-auto flex flex-col border backdrop-blur-md overflow-hidden select-none outline-none ${
+      data-ui-element="floating-window"
+      className={`pointer-events-auto flex flex-col border backdrop-blur-md overflow-hidden select-none outline-none font-mono ${
         isLight
           ? 'bg-white/95 border-neutral-300 text-neutral-900 shadow-[0_0_0_1px_rgba(0,0,0,0.12),0_0_24px_rgba(0,0,0,0.16),0_0_48px_rgba(0,0,0,0.10)]'
           : 'bg-neutral-900/95 border-neutral-700 text-neutral-100 shadow-[0_0_0_1px_rgba(255,255,255,0.18),0_0_25px_rgba(0,0,0,0.85),0_0_35px_rgba(255,255,255,0.08)]'

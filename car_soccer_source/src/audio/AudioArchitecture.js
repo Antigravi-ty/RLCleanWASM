@@ -598,6 +598,7 @@ export class AudioSlotPool {
     this.slots = [];
     this._initialized = false;
     this._scratchPos = { x: 0, y: 0, z: 0 };
+    this.isMuted = false;
   }
 
   init() {
@@ -699,7 +700,7 @@ export class AudioSlotPool {
   }
 
   playBuffer(buffer, options = {}) {
-    if (!buffer) return null;
+    if (!buffer || this.isMuted) return null;
     const ctx = this.context;
     if (!ctx || ctx.state === "closed") return null;
     if (ctx.state === "suspended") {
@@ -875,18 +876,25 @@ export function getAudioContext() {
     const handleFocus = (hasFocus) => {
       const continueOnBlur = audioConfig.get('continueAudioOnLostFocus');
       if (continueOnBlur) {
+        if (subsystemState.slotPool) subsystemState.slotPool.isMuted = false;
         master.setActive(true);
       } else {
         if (!hasFocus) {
           master.setActive(false);
-          subsystemState.slotPool.silenceAll();
-          audioEngine.stateEngine.silenceAll();
+          if (subsystemState.slotPool) {
+            subsystemState.slotPool.isMuted = true;
+            subsystemState.slotPool.silenceAll();
+          }
+          audioEngine.silenceAll();
         } else {
           // Regaining focus without background audio permitted:
-          // Immediately flush output and clear all voice slots to avoid audio pops
+          // Immediately flush output, unblock buffer reception, and clear all voice slots to avoid audio pops & latency
           master.flush();
-          subsystemState.slotPool.silenceAll();
-          audioEngine.stateEngine.silenceAll();
+          if (subsystemState.slotPool) {
+            subsystemState.slotPool.silenceAll();
+            subsystemState.slotPool.isMuted = false;
+          }
+          audioEngine.silenceAll();
           master.setActive(true);
         }
       }

@@ -2451,8 +2451,19 @@ export class GameRuntime {
       if (!audioConfig.get('continueAudioOnLostFocus')) {
         const hasFocus = typeof document !== 'undefined' ? (!document.hidden && (typeof document.hasFocus === 'function' ? document.hasFocus() : true)) : true;
         if (!hasFocus) {
-          gameAudioEngine.stateEngine?.silenceAll?.();
-          getAudioSlotPool()?.silenceAll?.();
+          gameAudioEngine.silenceAll?.();
+          const pool = getAudioSlotPool?.();
+          if (pool) {
+            pool.isMuted = true;
+            pool.silenceAll?.();
+          }
+        } else {
+          const pool = getAudioSlotPool?.();
+          if (pool) {
+            pool.silenceAll?.();
+            pool.isMuted = false;
+          }
+          gameAudioEngine.silenceAll?.();
         }
       }
     };

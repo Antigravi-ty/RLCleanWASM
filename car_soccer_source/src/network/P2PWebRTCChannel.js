@@ -1072,6 +1072,14 @@ export class P2PWebRTCChannel {
 
     if (!payload) return;
 
+    // Simulate inbound packet loss on client side (Server sent the snapshot, but client dropped it)
+    if (this.role === 'client') {
+      if (this.packetLossRate > 0 && Math.random() < this.packetLossRate) {
+        this.stats.packetsDropped++;
+        return;
+      }
+    }
+
     // Apply simulated inbound extra latency if configured
     const delay = this.extraLatencyMs > 0
       ? Math.max(0, this.extraLatencyMs + (Math.random() * 2 - 1) * this.jitterMs)
@@ -1170,16 +1178,20 @@ export class P2PWebRTCChannel {
   send(packet, nowMs = performance.now()) {
     this.stats.packetsSent++;
 
-    if (this.dropNextPacket || this.packetsToDrop > 0) {
-      if (this.packetsToDrop > 0) this.packetsToDrop--;
-      this.dropNextPacket = false;
-      this.stats.packetsDropped++;
-      return false;
-    }
+    // In Rocket League / GDC authoritative model, server NEVER simulates packet loss when transmitting.
+    // Packet loss is strictly simulated on Client side, reflecting network transmission loss of server snapshots.
+    if (this.role !== 'host') {
+      if (this.dropNextPacket || this.packetsToDrop > 0) {
+        if (this.packetsToDrop > 0) this.packetsToDrop--;
+        this.dropNextPacket = false;
+        this.stats.packetsDropped++;
+        return false;
+      }
 
-    if (this.packetLossRate > 0 && Math.random() < this.packetLossRate) {
-      this.stats.packetsDropped++;
-      return false;
+      if (this.packetLossRate > 0 && Math.random() < this.packetLossRate) {
+        this.stats.packetsDropped++;
+        return false;
+      }
     }
 
     const doTransmit = () => {

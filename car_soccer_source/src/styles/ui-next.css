@@ -2,6 +2,7 @@
 
 :root {
   --font-apple: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   --ease-apple: cubic-bezier(0.2, 0.8, 0.25, 1);
   --ui-scale: 1;
   --ui-render-width: 1920px;
@@ -36,6 +37,13 @@
 #game-ui-viewport-host * {
   font-family: inherit;
   box-sizing: border-box;
+}
+
+/* Floating Window monospace standard: SF Mono -> JetBrains Mono */
+[data-ui-element="floating-window"],
+[data-ui-element="floating-window"] *,
+.font-mono {
+  font-family: var(--font-mono) !important;
 }
 
 /* Base resets & fallbacks for SimpleUI standard primitives */

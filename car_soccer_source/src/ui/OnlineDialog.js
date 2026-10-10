@@ -1230,12 +1230,21 @@ export class OnlineDialog {
       this.signalingClient.on('peer_joined', async ({ peerId, name }) => {
         console.log(`[OnlineDialog] Peer joined room via signaling: ${name} (${peerId})`);
         try {
-          const offerToken = await this.hostP2PChannel.createOfferToken({
-            roomId: this.roomId,
-            hostColorSlot: this.hostColorSlot,
-            hostColorHex: this.hostColorHex
-          });
-          this.signalingClient.sendOffer(peerId, offerToken);
+          let token = this.offerToken;
+          if (!token && this.hostP2PChannel) {
+            token = await this.hostP2PChannel.createOfferToken({
+              roomId: this.roomId,
+              hostColorSlot: this.hostColorSlot,
+              hostColorHex: this.hostColorHex
+            });
+            this.offerToken = token;
+          }
+          if (token) {
+            console.log(`[OnlineDialog] 🚀 Dispatching host offer token to peer ${peerId}`);
+            this.signalingClient.sendOffer(peerId, token);
+          } else {
+            console.warn('[OnlineDialog] Could not produce offer token for peer:', peerId);
+          }
         } catch (err) {
           console.error('[OnlineDialog] Failed to send offer to peer:', err);
         }
@@ -1289,6 +1298,7 @@ export class OnlineDialog {
     this._renderJoinView();
 
     try {
+      console.log(`[OnlineDialog] 🔄 Joining room: ${cleanRoomId} as client (${this.playerName})...`);
       roomConnectionProgress.advance('signaling_connect', 'Connecting to Token Signaling Server');
       let chosenColorSlot = this.clientColorSlot;
       let chosenColorHex = this.clientColorHex;
@@ -1302,7 +1312,7 @@ export class OnlineDialog {
       });
 
       this.clientP2PChannel.onConnected = async () => {
-        console.log('[OnlineDialog] Client connected to host via fast signaling!');
+        console.log('[OnlineDialog] 🚀 Client connected to host via WebRTC data channel!');
         roomConnectionProgress.advance('state_sync', 'Synchronizing Game Timeline & State');
         useUIStore?.getState?.()?.setOnlineSession?.({
           signalingConnected: true,
@@ -1320,6 +1330,7 @@ export class OnlineDialog {
       };
 
       const sigUrl = getSignalingUrl();
+      console.log(`[OnlineDialog] Connecting to signaling server at: ${sigUrl}`);
       if (this.signalingClient) {
         try { this.signalingClient.close(); } catch (_) {}
       }
@@ -1331,29 +1342,32 @@ export class OnlineDialog {
       });
 
       this.signalingClient.on('open', () => {
+        console.log('[OnlineDialog] ✅ Connected to signaling server! Waiting for host offer...');
         this.signalingStatus = 'connected';
         useUIStore?.getState?.()?.setOnlineSession?.({ signalingConnected: true, roomId: cleanRoomId });
         this._renderJoinView();
       });
 
       this.signalingClient.on('error', (err) => {
-        console.warn('[OnlineDialog] Client signaling error:', err);
+        console.warn('[OnlineDialog] ❌ Client signaling error:', err);
         this.signalingStatus = 'error';
         useUIStore?.getState?.()?.setOnlineSession?.({ signalingConnected: false });
         this._renderJoinView();
       });
 
       this.signalingClient.on('offer', async ({ sdp }) => {
-        console.log('[OnlineDialog] Received host offer via signaling, creating answer...');
+        console.log('[OnlineDialog] 📥 Received host offer via signaling, creating answer...');
         try {
           const answer = await this.clientP2PChannel.acceptOfferAndCreateAnswer(sdp, {
             clientColorSlot: chosenColorSlot,
             clientColorHex: chosenColorHex
           });
+          console.log('[OnlineDialog] 📤 Sending answer token back to host...');
           this.signalingClient.sendAnswer(answer);
           this.answerToken = answer;
           this._renderJoinView();
         } catch (err) {
+          console.error('[OnlineDialog] Failed to accept host offer:', err);
           this._showError('Failed to accept host offer', err);
         }
       });
@@ -1369,6 +1383,7 @@ export class OnlineDialog {
       };
 
       await this.signalingClient.connect();
+      console.log('[OnlineDialog] Signaling client connect() resolved.');
       this._renderJoinView();
     } catch (err) {
       this.signalingStatus = 'error';

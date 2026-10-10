@@ -381,6 +381,15 @@ export class DeterminismHarness {
     this.metrics.maxDeltaVel = 0;
     this.metrics.maxDeltaBall = 0;
     this.metrics.isBitExact = true;
+    this.notifyMetricsUpdated();
+  }
+
+  resetMaxDeltas() {
+    this.metrics.maxDeltaPos = 0;
+    this.metrics.maxDeltaVel = 0;
+    this.metrics.maxDeltaBall = 0;
+    this.metrics.isBitExact = (this.metrics.carDeltaPos === 0 && this.metrics.ballDeltaPos === 0);
+    this.notifyMetricsUpdated();
   }
 
   destroy() {
