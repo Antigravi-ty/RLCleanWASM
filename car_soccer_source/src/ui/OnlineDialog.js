@@ -1228,7 +1228,10 @@ export class OnlineDialog {
       });
 
       this.signalingClient.on('peer_joined', async ({ peerId, name }) => {
-        console.log(`[OnlineDialog] Peer joined room via signaling: ${name} (${peerId})`);
+        if (!peerId || peerId === this.signalingClient?.peerId) {
+          return;
+        }
+        console.log(`[OnlineDialog] Peer joined room via signaling: ${name || peerId} (${peerId})`);
         try {
           let token = this.offerToken;
           if (!token && this.hostP2PChannel) {

@@ -842,7 +842,9 @@ export class ArenaWorld {
   }
 
   get boostBloomActive() {
+    if (!Array.isArray(this.carBoosts)) return false;
     for (const carGroup of this.carBoosts) {
+      if (!Array.isArray(carGroup)) continue;
       for (const emitter of carGroup) {
         if (emitter?.bloomActive) return true;
       }
@@ -1102,7 +1104,7 @@ export class ArenaWorld {
   }
 
   async ensureOpponent() {
-    if (this.cars.length <= 1) {
+    if (!this.cars[1]) {
       if (!this.gameCarAsset && arenaWorldCarLoaders.loadGameCarAsset) {
         try {
           this.gameCarAsset = await arenaWorldCarLoaders.loadGameCarAsset();
@@ -1110,23 +1112,28 @@ export class ArenaWorld {
           console.warn("Opponent game car asset load skipped:", err);
         }
       }
-      this.opponentSun = this.makeSubjectSun(this.opponentSunTarget, 260);
-      this.opponentSun.visible = false;
-      this.scene.add(this.opponentSun, this.opponentSunTarget);
-      this.addCar(1, "game-car");
+      if (!this.opponentSun) {
+        this.opponentSun = this.makeSubjectSun(this.opponentSunTarget, 260);
+        this.opponentSun.visible = false;
+        this.scene.add(this.opponentSun, this.opponentSunTarget);
+      }
+      this.addCar(1, "game-car", 1);
     }
   }
 
   async prepareAssets() {
     await this.ensureOpponent();
     if (this.cars[BOT_CAR_INDEX]) this.cars[BOT_CAR_INDEX].visible = false;
-    await Promise.all(this.carBoosts.flatMap(emitterList => emitterList.map(emitter => emitter.preload?.())));
+    await Promise.all(this.carBoosts.flatMap(emitterList => Array.isArray(emitterList) ? emitterList.map(emitter => emitter?.preload?.()) : []));
   }
 
-  addCar(teamIndex, visual = this.carVisual) {
+  addCar(teamIndex, visual = this.carVisual, targetIndex = null) {
     const { Group, Vector3, Mesh, CylinderGeometry, MeshStandardMaterial } = resolveContext();
     const carRoot = new Group();
-    const isBot = this.cars.length === BOT_CAR_INDEX;
+    const insertIdx = (typeof targetIndex === 'number' && targetIndex >= 0 && targetIndex < this.cars.length)
+      ? targetIndex
+      : this.cars.length;
+    const isBot = insertIdx === BOT_CAR_INDEX;
     const isHitbox = visual.startsWith("hitbox-");
     const isRealistic = visual === "realistic";
     const isFlat = visual === "flat-car";
@@ -1134,6 +1141,8 @@ export class ArenaWorld {
 
     let gimbals = null;
     let boostOutlets = null;
+    let carHitbox = null;
+    let carGimbal = null;
 
     if (isHitbox) {
       const preset = HITBOX_PRESETS[visual] || HITBOX_PRESETS["hitbox-octane"];
@@ -1148,8 +1157,8 @@ export class ArenaWorld {
       const hitboxBox = createCarHitboxWireframe(preset);
       hitboxBox.name = "car-hitbox-wireframe";
       hitboxBox.visible = this.carHitboxesVisible;
-      this.carHitboxes.push(hitboxBox);
-      this.carGimbals.push(null);
+      carHitbox = hitboxBox;
+      carGimbal = null;
       carRoot.add(hitboxBox);
       boostOutlets = OCTANE_BOOST_OUTLETS.map(([x, y, z]) => new Vector3(x, y, z));
     } else if (isRealistic && arenaWorldCarLoaders.createRealisticCarModel) {
@@ -1163,14 +1172,14 @@ export class ArenaWorld {
       }
       if (gimbals?.hitbox) {
         gimbals.hitbox.visible = this.carHitboxesVisible;
-        this.carHitboxes.push(gimbals.hitbox);
-        this.carGimbals.push(gimbals);
+        carHitbox = gimbals.hitbox;
+        carGimbal = gimbals;
         carRoot.add(realisticGroup, gimbals.root);
       } else {
         const hitboxBox = createCarHitboxWireframe(OCTANE_HITBOX_PRESET);
         hitboxBox.visible = this.carHitboxesVisible;
-        this.carHitboxes.push(hitboxBox);
-        this.carGimbals.push(null);
+        carHitbox = hitboxBox;
+        carGimbal = null;
         carRoot.add(realisticGroup, hitboxBox);
       }
       boostOutlets = [model.boostOutlet || new Vector3(-57, 10.25, 0)];
@@ -1194,8 +1203,8 @@ export class ArenaWorld {
       const hitboxBox = createCarHitboxWireframe(hitboxPreset);
       hitboxBox.name = "car-hitbox-wireframe";
       hitboxBox.visible = this.carHitboxesVisible;
-      this.carHitboxes.push(hitboxBox);
-      this.carGimbals.push(null);
+      carHitbox = hitboxBox;
+      carGimbal = null;
       carRoot.add(hitboxBox);
       if (isFlat) {
         boostOutlets = FLAT_CAR_BOOST_OUTLETS.map(([x, y, z]) => new Vector3(x, y, z));
@@ -1255,29 +1264,53 @@ export class ArenaWorld {
       }
     }
 
-    this.carWheels.push(wheels);
-    this.carWheelSpecs.push(wheelSpecs);
-    this.wheelSpin.push([0, 0, 0, 0]);
-    this.carSuspension.push([]);
-    this.carJets.push(gimbals ? setupCarReactionJets(gimbals) : null);
-    this.jumpPrev.push(false);
-    this.jumpTimer.push(-1);
-    this.flipPrev.push(false);
-    this.dodgeBurst.push(0);
-    this.dodgeRoll.push(0);
-    this.dodgeYaw.push(0);
-    this.dodgePitch.push(0);
-
     const BoostEmitterClass = arenaWorldThreeContext.VehicleBoostEmitter || VehicleBoostEmitter;
     const defaultOutlets = OCTANE_BOOST_OUTLETS.map(([x, y, z]) => new Vector3(x, y, z));
-    this.carBoosts.push((boostOutlets || defaultOutlets).map((pos, p) => new BoostEmitterClass(this.scene, carRoot, pos, p === 0, isBot)));
+    const emitters = (boostOutlets || defaultOutlets).map((pos, p) => new BoostEmitterClass(this.scene, carRoot, pos, p === 0, isBot));
 
     const demoEffect = new DemolitionEffect();
-    this.carDemolitions.push(demoEffect);
     if (demoEffect.object) this.scene.add(demoEffect.object);
 
-    this.cars.push(carRoot);
-    this.vehiclePresets.push(visual);
+    if (insertIdx < this.cars.length) {
+      this.carHitboxes[insertIdx] = carHitbox;
+      this.carGimbals[insertIdx] = carGimbal;
+      this.carWheels[insertIdx] = wheels;
+      this.carWheelSpecs[insertIdx] = wheelSpecs;
+      this.wheelSpin[insertIdx] = [0, 0, 0, 0];
+      this.carSuspension[insertIdx] = [];
+      this.carJets[insertIdx] = gimbals ? setupCarReactionJets(gimbals) : null;
+      this.jumpPrev[insertIdx] = false;
+      this.jumpTimer[insertIdx] = -1;
+      this.flipPrev[insertIdx] = false;
+      this.dodgeBurst[insertIdx] = 0;
+      this.dodgeRoll[insertIdx] = 0;
+      this.dodgeYaw[insertIdx] = 0;
+      this.dodgePitch[insertIdx] = 0;
+      this.carBoosts[insertIdx] = emitters;
+      this.carDemolitions[insertIdx] = demoEffect;
+      this.cars[insertIdx] = carRoot;
+      this.vehiclePresets[insertIdx] = visual;
+    } else {
+      this.carHitboxes.push(carHitbox);
+      this.carGimbals.push(carGimbal);
+      this.carWheels.push(wheels);
+      this.carWheelSpecs.push(wheelSpecs);
+      this.wheelSpin.push([0, 0, 0, 0]);
+      this.carSuspension.push([]);
+      this.carJets.push(gimbals ? setupCarReactionJets(gimbals) : null);
+      this.jumpPrev.push(false);
+      this.jumpTimer.push(-1);
+      this.flipPrev.push(false);
+      this.dodgeBurst.push(0);
+      this.dodgeRoll.push(0);
+      this.dodgeYaw.push(0);
+      this.dodgePitch.push(0);
+      this.carBoosts.push(emitters);
+      this.carDemolitions.push(demoEffect);
+      this.cars.push(carRoot);
+      this.vehiclePresets.push(visual);
+    }
+
     this.scene.add(carRoot);
     if (this.carColors && this.carColors[teamIndex] !== undefined && this.carColors[teamIndex] !== null) {
       this.setCarColor(teamIndex, this.carColors[teamIndex]);
@@ -1468,7 +1501,9 @@ export class ArenaWorld {
 
   setCarHitboxesVisible(visible) {
     this.carHitboxesVisible = visible;
-    for (const hitboxMesh of this.carHitboxes) hitboxMesh.visible = visible;
+    for (const hitboxMesh of this.carHitboxes) {
+      if (hitboxMesh) hitboxMesh.visible = visible;
+    }
   }
 
   prepareBallSpeedTrail(camera) {

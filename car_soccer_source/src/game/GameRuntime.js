@@ -1055,7 +1055,7 @@ export class GameRuntime {
     const shouldSkipGpuRender = isMenuOpen && powerSave === 'freeze';
 
     if (!shouldSkipGpuRender) {
-      const isBloomActive = this.arena.boostBloomActive || Array.from(this.flipResetVisuals.values()).some(v => v.bloomActive);
+      const isBloomActive = Boolean(this.arena?.boostBloomActive || Array.from(this.flipResetVisuals.values()).some(v => v?.bloomActive));
       if (isBloomActive) {
         this.camera.camera.layers.set(0);
         this.applyBloomOccluders();
@@ -1510,8 +1510,10 @@ export class GameRuntime {
       this.authoritativeServer.addClientChannel(channel);
       let targetCarIndex = assignedCarIndex;
       if (typeof targetCarIndex !== 'number' || targetCarIndex < 1) {
+        const existingPeers = useUIStore?.getState?.()?.onlineSession?.connectedPeers || [];
+        const usedCarIndices = new Set(existingPeers.map(p => p.carIndex));
         for (let i = 1; i < 6; i++) {
-          if (!this.arena.cars[i] || !this.authoritativeServer.channelMap?.has(i)) {
+          if (!usedCarIndices.has(i)) {
             targetCarIndex = i;
             break;
           }
@@ -1525,6 +1527,9 @@ export class GameRuntime {
       await this.arena.ensureOpponent();
       while (this.arena.cars.length <= targetCarIndex) {
         this.arena.addCar(this.arena.cars.length % 2, 'game-car');
+      }
+      if (!this.arena.cars[targetCarIndex]) {
+        this.arena.addCar(team, 'game-car', targetCarIndex);
       }
       if (this.arena.cars[targetCarIndex]) {
         this.arena.cars[targetCarIndex].visible = true;
