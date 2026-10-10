@@ -380,6 +380,10 @@ export class P2PWebRTCChannel {
     }
   }
 
+  get connected() {
+    return Boolean(this.isOpen || (this.dataChannel && this.dataChannel.readyState === 'open'));
+  }
+
   setColor(slotId, hex) {
     this.localColorSlot = slotId;
     this.localColorHex = hex;
@@ -460,7 +464,8 @@ export class P2PWebRTCChannel {
           type: 'cross_tab_ack',
           hostName: this.playerName,
           hostColorSlot: this.localColorSlot,
-          hostColorHex: this.localColorHex
+          hostColorHex: this.localColorHex,
+          offerToken: this.offerToken
         });
 
         if (!wasOpen) {
@@ -480,9 +485,27 @@ export class P2PWebRTCChannel {
         const wasOpen = this.isOpen;
         this.isOpen = true;
 
+        if (data.offerToken && !this.answerToken && !this.pc?.currentRemoteDescription) {
+          this.acceptOfferAndCreateAnswer(data.offerToken).then(ans => {
+            this._sendRoomMessage({
+              type: 'room_answer',
+              sdp: ans,
+              clientName: this.playerName
+            });
+          }).catch(() => {});
+        }
+
         if (!wasOpen) {
           queueMicrotask(() => this.onConnected?.());
         }
+        return;
+      }
+
+      if (data.type === 'room_answer' && this.role === 'host' && data.sdp) {
+        console.log(`[P2PWebRTCChannel] 📥 Host received room_answer via BroadcastChannel from ${data.clientName || 'Client'}`);
+        this.acceptAnswerToken(data.sdp).catch(err => {
+          console.warn('[P2PWebRTCChannel] Failed to accept room_answer:', err);
+        });
         return;
       }
 
