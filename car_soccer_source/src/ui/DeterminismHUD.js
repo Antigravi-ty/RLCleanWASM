@@ -27,7 +27,15 @@ export class DeterminismHUD {
     if (typeof document !== 'undefined') {
       this.initDOM();
       if (this.harness) {
-        this.harness.onMetricsUpdated = (metrics) => this.update(metrics);
+        if (typeof this.harness.addMetricsListener === 'function') {
+          this.harness.addMetricsListener((metrics) => this.update(metrics));
+        } else {
+          const prev = this.harness.onMetricsUpdated;
+          this.harness.onMetricsUpdated = (metrics) => {
+            if (typeof prev === 'function') prev(metrics);
+            this.update(metrics);
+          };
+        }
       }
     }
   }

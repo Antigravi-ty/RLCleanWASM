@@ -212,8 +212,52 @@ export function mountGameUI(
         try {
           if (gameRuntime.onlineDialog) {
             gameRuntime.onlineDialog.playerName = opts.playerName;
-            await gameRuntime.onlineDialog._joinWithRoomId(opts.roomId);
-            return true;
+            return await new Promise<boolean>((resolve) => {
+              let timer: any = null;
+              let resolved = false;
+
+              const finish = (ok: boolean) => {
+                if (resolved) return;
+                resolved = true;
+                if (timer) clearTimeout(timer);
+                resolve(ok);
+              };
+
+              timer = setTimeout(() => {
+                finish(false);
+              }, 12000);
+
+              const checkChannel = () => {
+                const ch = gameRuntime.onlineDialog.clientP2PChannel;
+                if (ch) {
+                  if (ch.connected) {
+                    finish(true);
+                    return;
+                  }
+                  const origConnected = ch.onConnected;
+                  ch.onConnected = async () => {
+                    if (origConnected) await origConnected();
+                    finish(true);
+                  };
+                  const origDisconnected = ch.onDisconnected;
+                  ch.onDisconnected = () => {
+                    if (origDisconnected) origDisconnected();
+                    if (!ch.connected) finish(false);
+                  };
+                }
+              };
+
+              gameRuntime.onlineDialog._joinWithRoomId(opts.roomId)
+                .then(() => {
+                  checkChannel();
+                })
+                .catch((e: any) => {
+                  console.warn('[mountGameUI] Join room failed:', e);
+                  finish(false);
+                });
+
+              checkChannel();
+            });
           }
           if (typeof gameRuntime.joinOnlineServer === 'function') {
             await gameRuntime.joinOnlineServer({
@@ -236,8 +280,36 @@ export function mountGameUI(
           } else if (typeof gameRuntime.stopOnlineServer === 'function') {
             await gameRuntime.stopOnlineServer();
           }
+          useUIStore.getState().setMatchMode('freeplay');
+          useUIStore.getState().setOnlineSession({
+            isHosting: false,
+            roomId: '',
+            signalingConnected: false,
+            connectedPeers: [],
+          });
         } catch (e) {
           console.error('[mountGameUI] Error stopping online server', e);
+        }
+      },
+      onRemovePlayer: async (carIndex: number) => {
+        if (!gameRuntime) return;
+        if (typeof gameRuntime.removeRemotePlayer === 'function') {
+          await gameRuntime.removeRemotePlayer(carIndex);
+        }
+      },
+      onReconnectSignaling: async () => {
+        if (!gameRuntime) return;
+        try {
+          if (gameRuntime.onlineDialog) {
+            if (gameRuntime.onlineDialog.isHosting) {
+              gameRuntime.onlineDialog._initHostSignaling();
+            } else if (gameRuntime.onlineDialog.joinRoomId) {
+              await gameRuntime.onlineDialog._joinWithRoomId(gameRuntime.onlineDialog.joinRoomId, gameRuntime.onlineDialog.joinPassword);
+            }
+          }
+          useUIStore.getState().setOnlineSession({ signalingConnected: true });
+        } catch (e) {
+          console.error('[mountGameUI] Error reconnecting signaling', e);
         }
       },
       onResetBall: () => {

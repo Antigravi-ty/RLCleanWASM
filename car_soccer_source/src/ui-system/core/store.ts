@@ -372,7 +372,7 @@ export interface UIState {
     roomId: string;
     playerName: string;
     signalingConnected: boolean;
-    connectedPeers: { id: string; name: string; pingMs: number }[];
+    connectedPeers: { id: string; name: string; pingMs: number; carIndex?: number }[];
   };
   setOnlineSession: (session: Partial<UIState['onlineSession']>) => void;
 
@@ -391,6 +391,8 @@ export interface UIState {
     onHostOnlineWarmup?: (opts: { roomId: string; playerName: string }) => Promise<boolean>;
     onJoinOnlineWarmup?: (opts: { roomId: string; playerName: string }) => Promise<boolean>;
     onLeaveOnlineServer?: () => Promise<void>;
+    onRemovePlayer?: (carIndex: number) => Promise<void>;
+    onReconnectSignaling?: () => Promise<void>;
     onResetBall?: () => void;
     onCameraChange?: (config: CameraConfig) => void;
     onGraphicsChange?: (config: GraphicsConfig) => void;

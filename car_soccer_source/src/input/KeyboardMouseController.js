@@ -15,7 +15,7 @@ export function isEventWithinUI(target) {
   return (
     target instanceof Element &&
     target.closest(
-      ".hud-tools, .sheet-overlay, .car-tab, .car-overlay, .match-tab, .match-overlay, .match-hud, .match-result, .status, .touch-controls, .event-oscilloscope, .online-overlay, .online-modal, .online-tab-btn, .net-hud, #online-button, .trajectory-overlay, .trajectory-panel, #trajectory-button, #game-ui-root, #game-ui-viewport-host, #game-root"
+      ".hud-tools, .sheet-overlay, .car-tab, .car-overlay, .match-tab, .match-overlay, .match-hud, .match-result, .status, .event-oscilloscope, .online-overlay, .online-modal, .online-tab-btn, .net-hud, #online-button, .trajectory-overlay, .trajectory-panel, #trajectory-button, #game-ui-root, #game-ui-viewport-host, #game-root"
     ) !== null
   );
 }

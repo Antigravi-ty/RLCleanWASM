@@ -33,7 +33,15 @@ export class NetworkReconciliationHUD {
     if (typeof document !== 'undefined') {
       this.initDOM();
       if (this.reconciler) {
-        this.reconciler.onMetricsUpdated = (m) => this.update(m);
+        if (typeof this.reconciler.addMetricsListener === 'function') {
+          this.reconciler.addMetricsListener((m) => this.update(m));
+        } else {
+          const prev = this.reconciler.onMetricsUpdated;
+          this.reconciler.onMetricsUpdated = (m) => {
+            if (typeof prev === 'function') prev(m);
+            this.update(m);
+          };
+        }
       }
     }
   }
@@ -42,7 +50,15 @@ export class NetworkReconciliationHUD {
     this.reconciler = reconciler;
     this.channel = channel;
     if (this.reconciler) {
-      this.reconciler.onMetricsUpdated = (m) => this.update(m);
+      if (typeof this.reconciler.addMetricsListener === 'function') {
+        this.reconciler.addMetricsListener((m) => this.update(m));
+      } else {
+        const prev = this.reconciler.onMetricsUpdated;
+        this.reconciler.onMetricsUpdated = (m) => {
+          if (typeof prev === 'function') prev(m);
+          this.update(m);
+        };
+      }
     }
     this.syncLatencyValues();
   }

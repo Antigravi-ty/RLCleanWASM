@@ -113,39 +113,39 @@ export const DeterminismFloatingWindow: React.FC<DeterminismFloatingWindowProps>
 
         <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
           <div className="flex justify-between items-center">
-            <span className="text-neutral-400">Car ΔPos:</span>
-            <span className={metrics.carDeltaPos > 0.001 ? 'text-rose-400 font-bold' : 'text-neutral-200'}>
+            <span className={isLight ? 'text-neutral-600' : 'text-neutral-400'}>Car ΔPos:</span>
+            <span className={metrics.carDeltaPos > 0.001 ? 'text-rose-400 font-bold' : isLight ? 'text-neutral-900 font-bold' : 'text-emerald-400 font-bold'}>
               {metrics.carDeltaPos.toExponential(2)} m
             </span>
           </div>
 
           <div className="flex justify-between items-center">
-            <span className="text-neutral-400">Peak ΔPos:</span>
-            <span className="text-neutral-200">{metrics.maxDeltaPos.toExponential(2)} m</span>
+            <span className={isLight ? 'text-neutral-600' : 'text-neutral-400'}>Peak ΔPos:</span>
+            <span className={isLight ? 'text-neutral-800 font-semibold' : 'text-neutral-200'}>{metrics.maxDeltaPos.toExponential(2)} m</span>
           </div>
 
           <div className="flex justify-between items-center">
-            <span className="text-neutral-400">Car ΔVel:</span>
-            <span className={metrics.carDeltaVel > 0.001 ? 'text-rose-400 font-bold' : 'text-neutral-200'}>
+            <span className={isLight ? 'text-neutral-600' : 'text-neutral-400'}>Car ΔVel:</span>
+            <span className={metrics.carDeltaVel > 0.001 ? 'text-rose-400 font-bold' : isLight ? 'text-neutral-900 font-bold' : 'text-emerald-400 font-bold'}>
               {metrics.carDeltaVel.toExponential(2)} m/s
             </span>
           </div>
 
           <div className="flex justify-between items-center">
-            <span className="text-neutral-400">Peak ΔVel:</span>
-            <span className="text-neutral-200">{metrics.maxDeltaVel.toExponential(2)} m/s</span>
+            <span className={isLight ? 'text-neutral-600' : 'text-neutral-400'}>Peak ΔVel:</span>
+            <span className={isLight ? 'text-neutral-800 font-semibold' : 'text-neutral-200'}>{metrics.maxDeltaVel.toExponential(2)} m/s</span>
           </div>
 
           <div className="flex justify-between items-center">
-            <span className="text-neutral-400">Ball ΔPos:</span>
-            <span className={metrics.ballDeltaPos > 0.001 ? 'text-rose-400 font-bold' : 'text-neutral-200'}>
+            <span className={isLight ? 'text-neutral-600' : 'text-neutral-400'}>Ball ΔPos:</span>
+            <span className={metrics.ballDeltaPos > 0.001 ? 'text-rose-400 font-bold' : isLight ? 'text-neutral-900 font-bold' : 'text-emerald-400 font-bold'}>
               {metrics.ballDeltaPos.toExponential(2)} m
             </span>
           </div>
 
           <div className="flex justify-between items-center">
-            <span className="text-neutral-400">Car ΔAngVel:</span>
-            <span className="text-neutral-200">{metrics.carDeltaAngVel.toExponential(2)} rad/s</span>
+            <span className={isLight ? 'text-neutral-600' : 'text-neutral-400'}>Car ΔAngVel:</span>
+            <span className={isLight ? 'text-neutral-800 font-semibold' : 'text-neutral-200'}>{metrics.carDeltaAngVel.toExponential(2)} rad/s</span>
           </div>
         </div>
       </div>

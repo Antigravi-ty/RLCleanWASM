@@ -125,6 +125,24 @@ export class PredictionReconciler {
     };
 
     this.onMetricsUpdated = null;
+    this._metricsListeners = new Set();
+  }
+
+  addMetricsListener(fn) {
+    if (typeof fn === 'function') {
+      this._metricsListeners.add(fn);
+      return () => this._metricsListeners.delete(fn);
+    }
+    return () => {};
+  }
+
+  notifyMetricsUpdated() {
+    if (this.onMetricsUpdated) {
+      try { this.onMetricsUpdated(this.metrics); } catch (_) {}
+    }
+    for (const listener of this._metricsListeners) {
+      try { listener(this.metrics); } catch (_) {}
+    }
   }
 
   /**
@@ -191,6 +209,7 @@ export class PredictionReconciler {
     this.metrics.clientTick = currentClientTick;
     this.metrics.serverTick = serverTick;
     this.metrics.leadTicks = this.leadTicks;
+    this.notifyMetricsUpdated();
   }
 
   /**
@@ -259,6 +278,9 @@ export class PredictionReconciler {
     // Save snapshot slot for quick local rollback
     this.sim.saveStateSlot(currentTick % 256);
     this.metrics.clientTick = currentTick;
+    if (currentTick % 2 === 0) {
+      this.notifyMetricsUpdated();
+    }
   }
 
   /**
@@ -537,10 +559,8 @@ export class PredictionReconciler {
       }
     }
 
-    if (this.onMetricsUpdated) {
-      this.metrics.smoothingMagnitude = Math.hypot(this.visualSmoothingOffset.x, this.visualSmoothingOffset.y, this.visualSmoothingOffset.z);
-      this.onMetricsUpdated(this.metrics);
-    }
+    this.metrics.smoothingMagnitude = Math.hypot(this.visualSmoothingOffset.x, this.visualSmoothingOffset.y, this.visualSmoothingOffset.z);
+    this.notifyMetricsUpdated();
   }
 
   /**

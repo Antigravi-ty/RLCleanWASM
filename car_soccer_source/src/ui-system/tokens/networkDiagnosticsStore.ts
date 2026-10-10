@@ -58,19 +58,45 @@ export const networkDiagnosticsStore = {
       runtimeRef: runtime ?? state.runtimeRef,
     };
     if (reconciler) {
-      reconciler.onMetricsUpdated = (m: Partial<NetworkMetrics>) => {
+      const updateFn = (m: any) => {
+        const effectiveRtt = m.rttMs ?? channel?.rttMs ?? (channel?.extraLatencyMs ? channel.extraLatencyMs * 2 : 0);
+        const leadTicks = m.leadTicks ?? m.clientLeadTicks ?? 0;
+        const corrections = m.totalCorrections ?? m.corrections ?? 0;
+        const serverTick = m.serverTick ?? state.metrics.serverTick;
+        const clientTick = m.clientTick ?? state.metrics.clientTick;
+        const deltaTicks = Math.abs(clientTick - serverTick);
+        const packetLossPct = channel?.packetLossRate !== undefined
+          ? Math.round(channel.packetLossRate * 100)
+          : (channel?.simulatedPacketLossPct ?? state.metrics.packetLossPct);
+
         state = {
           ...state,
           metrics: {
             ...state.metrics,
             ...m,
+            rttMs: effectiveRtt,
+            clientLeadTicks: leadTicks,
+            corrections: corrections,
+            serverTick: serverTick,
+            clientTick: clientTick,
+            deltaTicks: deltaTicks,
             extraLatencyMs: channel?.extraLatencyMs ?? state.metrics.extraLatencyMs,
-            packetLossPct: channel?.simulatedPacketLossPct ?? state.metrics.packetLossPct,
+            packetLossPct: packetLossPct,
             connected: Boolean(channel),
           },
         };
         notify();
       };
+
+      if (typeof reconciler.addMetricsListener === 'function') {
+        reconciler.addMetricsListener(updateFn);
+      } else {
+        const prev = reconciler.onMetricsUpdated;
+        reconciler.onMetricsUpdated = (m: any) => {
+          if (typeof prev === 'function') prev(m);
+          updateFn(m);
+        };
+      }
     }
     notify();
   },
@@ -78,7 +104,11 @@ export const networkDiagnosticsStore = {
   setExtraLatency: (ms: number) => {
     const val = Math.max(0, Math.min(500, ms));
     if (state.channelRef) {
-      state.channelRef.extraLatencyMs = val;
+      if (typeof state.channelRef.setExtraLatency === 'function') {
+        state.channelRef.setExtraLatency(val);
+      } else {
+        state.channelRef.extraLatencyMs = val;
+      }
     }
     state = {
       ...state,
@@ -90,6 +120,11 @@ export const networkDiagnosticsStore = {
   setPacketLoss: (pct: number) => {
     const val = Math.max(0, Math.min(100, pct));
     if (state.channelRef) {
+      if (typeof state.channelRef.setPacketLossRate === 'function') {
+        state.channelRef.setPacketLossRate(val / 100.0);
+      } else {
+        state.channelRef.packetLossRate = val / 100.0;
+      }
       state.channelRef.simulatedPacketLossPct = val;
     }
     state = {

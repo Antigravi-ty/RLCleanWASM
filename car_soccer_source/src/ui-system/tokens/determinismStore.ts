@@ -68,10 +68,19 @@ export const determinismStore = {
       rollbackDepth: harness?.rollbackDepth ?? state.rollbackDepth,
     };
     if (harness) {
-      harness.onMetricsUpdated = (m: DeterminismMetrics) => {
-        state = { ...state, metrics: { ...m } };
-        notify();
-      };
+      if (typeof harness.addMetricsListener === 'function') {
+        harness.addMetricsListener((m: DeterminismMetrics) => {
+          state = { ...state, metrics: { ...m } };
+          notify();
+        });
+      } else {
+        const prev = harness.onMetricsUpdated;
+        harness.onMetricsUpdated = (m: DeterminismMetrics) => {
+          if (typeof prev === 'function') prev(m);
+          state = { ...state, metrics: { ...m } };
+          notify();
+        };
+      }
     }
     notify();
   },
@@ -94,6 +103,9 @@ export const determinismStore = {
     const d = depth ?? state.rollbackDepth;
     if (state.harnessRef?.triggerManualRollback) {
       state.harnessRef.triggerManualRollback(d);
+    } else if (state.harnessRef?.executeRollback) {
+      state.harnessRef.executeRollback(d);
+      state.harnessRef.compareStates?.();
     }
   },
 

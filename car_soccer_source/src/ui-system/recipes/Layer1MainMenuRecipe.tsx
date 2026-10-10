@@ -83,12 +83,16 @@ export const Layer1MainMenuRecipe: React.FC<Layer1MainMenuRecipeProps> = ({
 
           <MenuDivider isLight={isLight} />
 
-          {/* If in Online Warmup: Manage Room instead of Play */}
+          {/* If in Online Warmup: Configure Room (Host) or Inspect Room Info (Client) */}
           {isOnlineWarmup ? (
             <MenuItem
               icon={<Router className="h-5 w-5 text-sky-400" />}
-              title="Manage Room"
-              subtitle="Room host control panel & connected players"
+              title={useUIStore.getState().onlineSession.isHosting ? "Configure Room" : "Inspect Room Info"}
+              subtitle={
+                useUIStore.getState().onlineSession.isHosting
+                  ? "Room configuration panel & connected players"
+                  : "Inspect room details & connection status"
+              }
               hasArrow
               onClick={onNavigateManageRoom}
               isLight={isLight}

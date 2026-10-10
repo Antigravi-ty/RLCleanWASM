@@ -127,23 +127,23 @@ export const NetworkDiagnosticsFloatingWindow: React.FC<NetworkDiagnosticsFloati
 
         <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
           <div className="flex justify-between items-center">
-            <span className="text-neutral-400">Server Tick:</span>
-            <span className="text-neutral-200">#{metrics.serverTick}</span>
+            <span className={isLight ? 'text-neutral-600' : 'text-neutral-400'}>Server Tick:</span>
+            <span className={isLight ? 'text-neutral-900 font-bold' : 'text-sky-300 font-bold'}>#{metrics.serverTick}</span>
           </div>
 
           <div className="flex justify-between items-center">
-            <span className="text-neutral-400">Client Tick:</span>
-            <span className="text-neutral-200">#{metrics.clientTick}</span>
+            <span className={isLight ? 'text-neutral-600' : 'text-neutral-400'}>Client Tick:</span>
+            <span className={isLight ? 'text-neutral-900 font-bold' : 'text-emerald-300 font-bold'}>#{metrics.clientTick}</span>
           </div>
 
           <div className="flex justify-between items-center">
-            <span className="text-neutral-400">Delta Ticks:</span>
-            <span className="text-neutral-200">+{metrics.deltaTicks}</span>
+            <span className={isLight ? 'text-neutral-600' : 'text-neutral-400'}>Delta Ticks:</span>
+            <span className="text-sky-400 font-bold">+{metrics.deltaTicks}</span>
           </div>
 
           <div className="flex justify-between items-center">
-            <span className="text-neutral-400">Mispredictions:</span>
-            <span className={metrics.mispredictions > 0 ? 'text-amber-400' : 'text-neutral-200'}>
+            <span className={isLight ? 'text-neutral-600' : 'text-neutral-400'}>Mispredictions:</span>
+            <span className={metrics.mispredictions > 0 ? 'text-amber-400 font-bold' : isLight ? 'text-neutral-700' : 'text-neutral-300'}>
               {metrics.mispredictions}
             </span>
           </div>

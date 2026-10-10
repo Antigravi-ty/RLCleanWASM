@@ -53,7 +53,25 @@ export class DeterminismHarness {
     };
 
     this.onMetricsUpdated = null;
+    this._metricsListeners = new Set();
     this._originalMethods = {};
+  }
+
+  addMetricsListener(fn) {
+    if (typeof fn === 'function') {
+      this._metricsListeners.add(fn);
+      return () => this._metricsListeners.delete(fn);
+    }
+    return () => {};
+  }
+
+  notifyMetricsUpdated() {
+    if (this.onMetricsUpdated) {
+      try { this.onMetricsUpdated(this.metrics); } catch (_) {}
+    }
+    for (const listener of this._metricsListeners) {
+      try { listener(this.metrics); } catch (_) {}
+    }
   }
 
   /**
@@ -239,6 +257,16 @@ export class DeterminismHarness {
     this.metrics.totalRollbacks = this.totalRollbacks;
     this.metrics.currentDepth = actualDepth;
     this.metrics.lastRollbackDurationMs = duration;
+    this.compareStates();
+  }
+
+  /**
+   * Public API to explicitly trigger a rollback
+   * @param {number} [depth] Number of ticks to rewind
+   */
+  triggerManualRollback(depth = this.rollbackDepth) {
+    this.executeRollback(depth);
+    this.compareStates();
   }
 
   /**
@@ -340,9 +368,7 @@ export class DeterminismHarness {
 
     this.metrics.isBitExact = (carDeltaPos === 0 && ballDeltaPos === 0);
 
-    if (this.onMetricsUpdated) {
-      this.onMetricsUpdated(this.metrics);
-    }
+    this.notifyMetricsUpdated();
   }
 
   /**

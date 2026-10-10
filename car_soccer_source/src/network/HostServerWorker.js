@@ -161,9 +161,16 @@ export class HostServerWorker {
       setRtt: (rttMs) => {
         ch.setExtraLatency(Math.round((Number(rttMs) || 0) * 0.5));
       },
+      packetLossRate: 0.0,
+      setPacketLossRate: (rate) => {
+        ch.packetLossRate = Math.min(1.0, Math.max(0.0, Number(rate) || 0));
+      },
       onPacketReceived: null,
       onMessage: null,
       send: (packet, nowMs = performance.now()) => {
+        if (ch.packetLossRate > 0 && Math.random() < ch.packetLossRate) {
+          return false;
+        }
         const doSend = () => {
           if (this.isWorker && this.worker) {
             this._postCommand('clientInput', { channelId: 'host', packet, timestamp: nowMs });
@@ -328,6 +335,9 @@ export class HostServerWorker {
       case 'channel_packet': {
         const { channelId, packet } = data;
         if (channelId === 'host') {
+          if (this.hostChannel?.packetLossRate > 0 && Math.random() < this.hostChannel.packetLossRate) {
+            break;
+          }
           const delay = this.hostChannel?.extraLatencyMs ?? 0;
           const deliverAt = delay > 0 ? performance.now() + delay : 0;
           if (this.hostChannel?.inboundQueue) {

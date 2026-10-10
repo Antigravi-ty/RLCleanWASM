@@ -1343,6 +1343,15 @@ export class GameRuntime {
       this.physics.configureCars("default", false, 0);
     }
     this.resetKickoff();
+    if (useUIStore && typeof useUIStore.getState === 'function') {
+      useUIStore.getState().setMatchMode('freeplay');
+      useUIStore.getState().setOnlineSession({
+        isHosting: false,
+        roomId: '',
+        signalingConnected: false,
+        connectedPeers: [],
+      });
+    }
   }
 
   /**
@@ -1401,6 +1410,16 @@ export class GameRuntime {
         this.networkReconciler,
         this.networkChannel
       );
+    }
+
+    if (useUIStore && typeof useUIStore.getState === 'function') {
+      useUIStore.getState().setMatchMode('online-warmup');
+      useUIStore.getState().setOnlineSession({
+        isHosting: true,
+        roomId: options.roomId || 'local_room',
+        playerName: playerName,
+        signalingConnected: true,
+      });
     }
   }
 
@@ -1472,6 +1491,15 @@ export class GameRuntime {
         }));
       }
     }
+
+    if (useUIStore && typeof useUIStore.getState === 'function') {
+      useUIStore.getState().setMatchMode('online-warmup');
+      useUIStore.getState().setOnlineSession({
+        isHosting: false,
+        playerName: playerName,
+        signalingConnected: true,
+      });
+    }
   }
 
   /**
@@ -1516,6 +1544,22 @@ export class GameRuntime {
           this.setCarColor(cIdx, msg.hex, false);
         };
       }
+
+      if (useUIStore && typeof useUIStore.getState === 'function') {
+        const session = useUIStore.getState().onlineSession;
+        const ping = Math.round(channel?.measuredRttMs || 15);
+        const peerEntry = {
+          id: `peer_${targetCarIndex}`,
+          carIndex: targetCarIndex,
+          name: remotePlayerName,
+          pingMs: ping
+        };
+        const existingPeers = (session.connectedPeers || []).filter(p => p.carIndex !== targetCarIndex);
+        useUIStore.getState().setOnlineSession({
+          connectedPeers: [...existingPeers, peerEntry]
+        });
+      }
+
       return targetCarIndex;
     }
   }
@@ -1529,6 +1573,12 @@ export class GameRuntime {
     if (this.flipResetVisuals.has(carIndex)) {
       this.flipResetVisuals.get(carIndex).stopVisual();
       this.flipResetVisuals.delete(carIndex);
+    }
+    if (useUIStore && typeof useUIStore.getState === 'function') {
+      const session = useUIStore.getState().onlineSession;
+      useUIStore.getState().setOnlineSession({
+        connectedPeers: (session.connectedPeers || []).filter(p => p.carIndex !== carIndex && p.id !== `peer_${carIndex}`)
+      });
     }
   }
 
@@ -1952,7 +2002,12 @@ export class GameRuntime {
   handleOverlayChange(name, isOpen) {
     if (isOpen) {
       if (useUIStore && typeof useUIStore.getState === 'function') {
-        const mode = this.match?.state?.mode || 'freeplay';
+        const isOnline = Boolean(
+          this.authoritativeServer ||
+          (this.networkChannel && this.playerCarIndex === 1) ||
+          useUIStore.getState().matchMode === 'online-warmup'
+        );
+        const mode = isOnline ? 'online-warmup' : (this.match?.state?.mode || 'freeplay');
         if (useUIStore.getState().matchMode !== mode) {
           useUIStore.getState().setMatchMode(mode);
         }
