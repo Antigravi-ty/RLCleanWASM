@@ -1198,8 +1198,14 @@ export class OnlineDialog {
   }
 
   _initHostSignaling() {
+    if (!this.isHosting) return;
     const sigUrl = getSignalingUrl();
+    console.log(`[OnlineDialog] Host connecting to signaling server at: ${sigUrl} (Room: ${this.roomId})`);
     try {
+      if (this._hostReconnectTimeout) {
+        clearTimeout(this._hostReconnectTimeout);
+        this._hostReconnectTimeout = null;
+      }
       if (this.signalingClient) {
         try { this.signalingClient.close(); } catch (_) {}
       }
@@ -1220,6 +1226,17 @@ export class OnlineDialog {
         if (this.view === 'host') this._renderHostView();
       });
 
+      this.signalingClient.on('close', () => {
+        this.signalingStatus = 'error';
+        if (this.isHosting) {
+          console.log('[OnlineDialog] Host signaling connection closed, scheduling auto-reconnect in 3s...');
+          if (this._hostReconnectTimeout) clearTimeout(this._hostReconnectTimeout);
+          this._hostReconnectTimeout = setTimeout(() => {
+            if (this.isHosting) this._initHostSignaling();
+          }, 3000);
+        }
+      });
+
       this.signalingClient.on('error', (err) => {
         console.warn('[OnlineDialog] Signaling connection notice:', err?.message || err);
         this.signalingStatus = 'error';
@@ -1227,11 +1244,9 @@ export class OnlineDialog {
         if (this.view === 'host') this._renderHostView();
       });
 
-      this.signalingClient.on('peer_joined', async ({ peerId, name }) => {
-        if (!peerId || peerId === this.signalingClient?.peerId) {
-          return;
-        }
-        console.log(`[OnlineDialog] Peer joined room via signaling: ${name || peerId} (${peerId})`);
+      const sendOfferToPeer = async (peerId, peerName) => {
+        if (!peerId || peerId === this.signalingClient?.peerId) return;
+        console.log(`[OnlineDialog] Dispatching host offer to peer: ${peerName || peerId} (${peerId})`);
         try {
           let token = this.offerToken;
           if (!token && this.hostP2PChannel) {
@@ -1251,10 +1266,28 @@ export class OnlineDialog {
         } catch (err) {
           console.error('[OnlineDialog] Failed to send offer to peer:', err);
         }
+      };
+
+      this.signalingClient.on('peer_joined', async ({ peerId, name, peerName }) => {
+        await sendOfferToPeer(peerId, name || peerName);
       });
 
-      this.signalingClient.on('answer', async ({ sdp, fromPeerId }) => {
-        console.log(`[OnlineDialog] Received answer from peer ${fromPeerId}`);
+      this.signalingClient.on('room_info', async ({ participants }) => {
+        if (!Array.isArray(participants) || !this.isHosting) return;
+        for (const p of participants) {
+          const peerId = p?.peerId;
+          if (peerId && peerId !== this.signalingClient?.peerId) {
+            await sendOfferToPeer(peerId, p.peerName || p.name);
+          }
+        }
+      });
+
+      this.signalingClient.on('request_offer', async ({ fromPeerId, name, senderName }) => {
+        await sendOfferToPeer(fromPeerId, name || senderName);
+      });
+
+      this.signalingClient.on('answer', async ({ sdp, fromPeerId, senderName }) => {
+        console.log(`[OnlineDialog] Received answer from peer ${fromPeerId || senderName || 'Client'}`);
         try {
           await this.hostP2PChannel.acceptAnswerToken(sdp);
           if (this.view === 'host') this._renderHostView();
@@ -1306,13 +1339,21 @@ export class OnlineDialog {
       let chosenColorSlot = this.clientColorSlot;
       let chosenColorHex = this.clientColorHex;
 
+      if (this.clientP2PChannel) {
+        try { this.clientP2PChannel.destroy(); } catch (_) {}
+        this.clientP2PChannel = null;
+      }
+
       this.clientP2PChannel = new P2PWebRTCChannel({
         role: 'client',
+        roomId: cleanRoomId,
         playerName: this.playerName,
         colorSlot: chosenColorSlot,
         colorHex: chosenColorHex,
         extraLatencyMs: 0
       });
+
+      this.clientP2PChannel._initRoomChannel(cleanRoomId);
 
       this.clientP2PChannel.onConnected = async () => {
         console.log('[OnlineDialog] 🚀 Client connected to host via WebRTC data channel!');
@@ -1332,6 +1373,45 @@ export class OnlineDialog {
         this._renderJoinView();
       };
 
+      // 1. Cross-tab join ping via room BroadcastChannel
+      this.clientP2PChannel._sendRoomMessage({
+        type: 'cross_tab_join',
+        clientName: this.playerName,
+        clientColorSlot: chosenColorSlot,
+        clientColorHex: chosenColorHex
+      });
+
+      // 2. Check localStorage for local active host of this room
+      if (typeof localStorage !== 'undefined') {
+        try {
+          const raw = localStorage.getItem('car_soccer_active_host');
+          if (raw) {
+            const hostInfo = JSON.parse(raw);
+            if (hostInfo && hostInfo.roomId === cleanRoomId && hostInfo.token) {
+              console.log(`[OnlineDialog] 🏠 Found active local host offer in localStorage for room ${cleanRoomId}! Ingesting...`);
+              this.clientP2PChannel.acceptOfferAndCreateAnswer(hostInfo.token, {
+                clientColorSlot: chosenColorSlot,
+                clientColorHex: chosenColorHex
+              }).then(answer => {
+                this.answerToken = answer;
+                this.clientP2PChannel._sendRoomMessage({
+                  type: 'room_answer',
+                  sdp: answer,
+                  roomId: cleanRoomId,
+                  clientName: this.playerName
+                });
+                this._renderJoinView();
+              }).catch(err => {
+                console.warn('[OnlineDialog] Failed to ingest local active host offer:', err);
+              });
+            }
+          }
+        } catch (e) {
+          console.warn('[OnlineDialog] Error checking local active host in localStorage:', e);
+        }
+      }
+
+      // 3. Connect to WebSocket signaling server
       const sigUrl = getSignalingUrl();
       console.log(`[OnlineDialog] Connecting to signaling server at: ${sigUrl}`);
       if (this.signalingClient) {
@@ -1348,17 +1428,38 @@ export class OnlineDialog {
         console.log('[OnlineDialog] ✅ Connected to signaling server! Waiting for host offer...');
         this.signalingStatus = 'connected';
         useUIStore?.getState?.()?.setOnlineSession?.({ signalingConnected: true, roomId: cleanRoomId });
+        this.signalingClient.send({
+          type: 'request_offer',
+          fromPeerId: this.signalingClient.peerId,
+          name: this.playerName
+        });
         this._renderJoinView();
+      });
+
+      this.signalingClient.on('room_info', ({ participants }) => {
+        if (!Array.isArray(participants)) return;
+        for (const p of participants) {
+          if (p?.peerId && p.peerId !== this.signalingClient?.peerId) {
+            this.signalingClient.send({
+              type: 'request_offer',
+              targetPeerId: p.peerId,
+              fromPeerId: this.signalingClient.peerId,
+              name: this.playerName
+            });
+          }
+        }
       });
 
       this.signalingClient.on('error', (err) => {
         console.warn('[OnlineDialog] ❌ Client signaling error:', err);
-        this.signalingStatus = 'error';
-        useUIStore?.getState?.()?.setOnlineSession?.({ signalingConnected: false });
+        if (!this.clientP2PChannel?.connected) {
+          this.signalingStatus = 'error';
+          useUIStore?.getState?.()?.setOnlineSession?.({ signalingConnected: false });
+        }
         this._renderJoinView();
       });
 
-      this.signalingClient.on('offer', async ({ sdp }) => {
+      this.signalingClient.on('offer', async ({ sdp, fromPeerId }) => {
         console.log('[OnlineDialog] 📥 Received host offer via signaling, creating answer...');
         try {
           const answer = await this.clientP2PChannel.acceptOfferAndCreateAnswer(sdp, {
@@ -1366,7 +1467,7 @@ export class OnlineDialog {
             clientColorHex: chosenColorHex
           });
           console.log('[OnlineDialog] 📤 Sending answer token back to host...');
-          this.signalingClient.sendAnswer(answer);
+          this.signalingClient.sendAnswer(answer, fromPeerId || null);
           this.answerToken = answer;
           this._renderJoinView();
         } catch (err) {
@@ -1385,12 +1486,21 @@ export class OnlineDialog {
         this.signalingClient?.sendCandidate(null, cand);
       };
 
-      await this.signalingClient.connect();
-      console.log('[OnlineDialog] Signaling client connect() resolved.');
+      try {
+        await this.signalingClient.connect(8000);
+        console.log('[OnlineDialog] Signaling client connect() resolved.');
+      } catch (sigErr) {
+        console.warn('[OnlineDialog] Signaling connect failed/timeout:', sigErr?.message || sigErr);
+        if (!this.clientP2PChannel?.connected) {
+          this.signalingStatus = 'error';
+        }
+      }
       this._renderJoinView();
     } catch (err) {
-      this.signalingStatus = 'error';
-      this._showError('Failed to connect via Signaling', err);
+      if (!this.clientP2PChannel?.connected) {
+        this.signalingStatus = 'error';
+        this._showError('Failed to connect via Signaling', err);
+      }
       this._renderJoinView();
     }
   }
@@ -1400,6 +1510,10 @@ export class OnlineDialog {
     this.isHosting = false;
     this.roomEstablished = false;
     this.signalingStatus = 'idle';
+    if (this._hostReconnectTimeout) {
+      clearTimeout(this._hostReconnectTimeout);
+      this._hostReconnectTimeout = null;
+    }
     if (this.discoveryHeartbeat) {
       clearInterval(this.discoveryHeartbeat);
       this.discoveryHeartbeat = null;

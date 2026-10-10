@@ -226,7 +226,7 @@ export function mountGameUI(
               // Extend timeout to 25s for WebRTC ICE gathering and NAT traversal
               timer = setTimeout(() => {
                 const ch = gameRuntime.onlineDialog?.clientP2PChannel;
-                if (ch && ch.connected) {
+                if (ch && (ch.connected || ch.isOpen)) {
                   finish(true);
                 } else {
                   console.warn('[mountGameUI] Join room timeout after 25s');
@@ -237,7 +237,7 @@ export function mountGameUI(
               const checkChannel = () => {
                 const ch = gameRuntime.onlineDialog?.clientP2PChannel;
                 if (ch) {
-                  if (ch.connected) {
+                  if (ch.connected || ch.isOpen) {
                     finish(true);
                     return;
                   }
@@ -252,7 +252,7 @@ export function mountGameUI(
                   const origDisconnected = ch.onDisconnected;
                   ch.onDisconnected = () => {
                     if (origDisconnected) origDisconnected();
-                    if (!ch.connected) finish(false);
+                    if (!ch.connected && !ch.isOpen) finish(false);
                   };
                 }
               };

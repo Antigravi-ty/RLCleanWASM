@@ -65,9 +65,10 @@ export class WebSocketSignalingClient {
 
   /**
    * Connect to the Cloudflare Worker signaling endpoint
+   * @param {number} [timeoutMs=8000] Connection timeout in milliseconds
    * @returns {Promise<void>}
    */
-  async connect() {
+  async connect(timeoutMs = 8000) {
     const WebSocketConstructor = typeof WebSocket !== 'undefined'
       ? WebSocket
       : (globalThis.WebSocket || null);
@@ -76,30 +77,54 @@ export class WebSocketSignalingClient {
       throw new Error('WebSocket is not supported in this environment');
     }
 
-
-
     return new Promise((resolve, reject) => {
       let isSettled = false;
       const wsUrl = this.connectUrl;
 
+      let timer = null;
+      if (timeoutMs > 0) {
+        timer = setTimeout(() => {
+          if (!isSettled) {
+            isSettled = true;
+            console.warn(`[WebSocketSignalingClient] ⏱️ WebSocket connect timed out after ${timeoutMs}ms: ${wsUrl}`);
+            try {
+              if (this.ws) {
+                this.ws.onopen = null;
+                this.ws.onerror = null;
+                this.ws.onclose = null;
+                this.ws.close();
+              }
+            } catch (_) {}
+            const err = new Error(`WebSocket connection timed out after ${timeoutMs}ms`);
+            this.emit('error', err);
+            reject(err);
+          }
+        }, timeoutMs);
+      }
+
       try {
+        console.log(`[WebSocketSignalingClient] 🔌 Opening WebSocket connection: ${wsUrl}`);
         this.ws = new WebSocketConstructor(wsUrl);
       } catch (err) {
+        if (timer) clearTimeout(timer);
         this.emit('error', err);
         return reject(err);
       }
 
       this.ws.onopen = () => {
+        if (timer) clearTimeout(timer);
         console.log(`[WebSocketSignalingClient] 🌐 WebSocket open: room=${this.roomId}, role=${this.role}, peerId=${this.peerId}`);
         if (!isSettled) {
           isSettled = true;
           this.isConnected = true;
+          this._startHeartbeat();
           this.emit('open');
           resolve();
         }
       };
 
       this.ws.onerror = err => {
+        if (timer) clearTimeout(timer);
         console.warn('[WebSocketSignalingClient] ⚠️ WebSocket error:', err);
         this.emit('error', err);
         if (!isSettled) {
@@ -109,8 +134,10 @@ export class WebSocketSignalingClient {
       };
 
       this.ws.onclose = ev => {
+        if (timer) clearTimeout(timer);
         console.log(`[WebSocketSignalingClient] 🔌 WebSocket closed: code=${ev.code}, reason=${ev.reason}`);
         this.isConnected = false;
+        this._stopHeartbeat();
         this.emit('close', ev);
         if (!isSettled) {
           isSettled = true;
@@ -129,10 +156,33 @@ export class WebSocketSignalingClient {
     });
   }
 
+  _startHeartbeat() {
+    this._stopHeartbeat();
+    this._heartbeatInterval = setInterval(() => {
+      if (this.isConnected && this.ws && this.ws.readyState === (typeof WebSocket !== 'undefined' ? WebSocket.OPEN : 1)) {
+        try {
+          this.ws.send(JSON.stringify({ type: 'ping', peerId: this.peerId, timestamp: Date.now() }));
+        } catch (_) {}
+      }
+    }, 12000);
+  }
+
+  _stopHeartbeat() {
+    if (this._heartbeatInterval) {
+      clearInterval(this._heartbeatInterval);
+      this._heartbeatInterval = null;
+    }
+  }
+
   /**
    * Dispatch parsed signaling message
    */
   handleMessage(msg) {
+    if (!msg) return;
+    if (msg.type === 'ping') {
+      this.send({ type: 'pong', peerId: this.peerId, timestamp: Date.now() });
+      return;
+    }
     if (msg.type) {
       this.emit(msg.type, msg);
     }
@@ -147,6 +197,8 @@ export class WebSocketSignalingClient {
     this.send({
       type: 'offer',
       targetPeerId,
+      fromPeerId: this.peerId,
+      senderName: this.playerName,
       sdp: sdpOffer
     });
   }
@@ -155,9 +207,12 @@ export class WebSocketSignalingClient {
    * Send WebRTC Answer back to the host (Client only)
    * @param {object} sdpAnswer
    */
-  sendAnswer(sdpAnswer) {
+  sendAnswer(sdpAnswer, targetPeerId = null) {
     this.send({
       type: 'answer',
+      targetPeerId,
+      fromPeerId: this.peerId,
+      senderName: this.playerName,
       sdp: sdpAnswer
     });
   }
@@ -171,6 +226,8 @@ export class WebSocketSignalingClient {
     this.send({
       type: 'candidate',
       targetPeerId,
+      fromPeerId: this.peerId,
+      senderName: this.playerName,
       candidate
     });
   }
@@ -207,6 +264,7 @@ export class WebSocketSignalingClient {
   }
 
   close() {
+    this._stopHeartbeat();
     if (this.ws) {
       try { this.ws.close(); } catch (_) {}
       this.ws = null;
