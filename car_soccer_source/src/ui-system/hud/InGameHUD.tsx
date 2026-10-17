@@ -5,6 +5,7 @@ import { BallCameraIndicator } from './BallCameraIndicator';
 import { CircularBoostGauge } from './CircularBoostGauge';
 import { MatchHeaderHUD } from './MatchHeaderHUD';
 import { KickoffKeyboardOverlay } from './KickoffKeyboardOverlay';
+import { SpeedometerHUD } from './SpeedometerHUD';
 
 export interface InGameHUDProps {
   className?: string;
@@ -97,6 +98,9 @@ export const InGameHUD: React.FC<InGameHUDProps> = ({ className = '' }) => {
           isLight={isLight}
         />
       </div>
+
+      {/* 3. Bottom-Center: Nonlinear Speedometer HUD */}
+      <SpeedometerHUD />
 
       {/* 4. Top-Center: Minimal Match Header HUD (Score & Timer & Kickoff) */}
       <MatchHeaderHUD isLight={isLight} />

@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { Target, CheckCircle2, AlertOctagon, RotateCcw, Play, Pause, Sliders } from 'lucide-react';
 import { useDeterminismData, determinismStore } from '../tokens/determinismStore';
+import { useUIStore } from '../core/store';
 
 export interface DeterminismFloatingWindowProps {
   isLight?: boolean;
@@ -43,7 +44,7 @@ export const DeterminismFloatingWindow: React.FC<DeterminismFloatingWindowProps>
   };
 
   useEffect(() => {
-    window.dispatchEvent(new CustomEvent('car-soccer:ensure-determinism'));
+    useUIStore.getState().bridge.onEnsureDeterminism?.();
   }, []);
 
   if (metrics.carDeltaPos !== undefined && !Number.isFinite(metrics.carDeltaPos)) {

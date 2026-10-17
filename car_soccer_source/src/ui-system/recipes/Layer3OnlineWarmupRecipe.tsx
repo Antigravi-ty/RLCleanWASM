@@ -4,9 +4,12 @@ import { PanelContainer, PanelHeader, PanelContent, PanelFooter } from '../layou
 import { InlineErrorNotice } from '../primitives/InlineErrorNotice';
 import { DEFAULT_PANEL_SIZING, expandQuickNotificationCenter } from '../tokens';
 import { useUIStore } from '../core/store';
-import { roomConnectionProgress } from '../../network/RoomConnectionProgressManager.js';
-import { getSignalingUrl } from '../../network/SignalingConfig.js';
-import { WebSocketSignalingClient } from '../../network/WebSocketSignalingClient.js';
+import { roomConnectionProgress, testSignalingConnectivity } from '../tokens/onlineConnectionStore';
+import {
+  getSignalingUrl,
+  loadStoredPlayerName,
+  saveStoredPlayerName,
+} from '../core/configStorageHydrators';
 import { HostTab } from './online/HostTab';
 import { JoinTab } from './online/JoinTab';
 import {
@@ -41,10 +44,8 @@ export const Layer3OnlineWarmupRecipe: React.FC<Layer3OnlineWarmupRecipeProps> =
   );
 
   const [playerName, setPlayerName] = useState(() => {
-    if (typeof localStorage !== 'undefined') {
-      const saved = localStorage.getItem('car-soccer:player-name');
-      if (saved?.trim()) return saved.trim();
-    }
+    const saved = loadStoredPlayerName();
+    if (saved) return saved;
     return `Striker-${Math.floor(1000 + Math.random() * 9000)}`;
   });
 
@@ -63,7 +64,7 @@ export const Layer3OnlineWarmupRecipe: React.FC<Layer3OnlineWarmupRecipeProps> =
     setDiagResult(null);
     try {
       const url = targetUrl || signalingUrl;
-      const res = await WebSocketSignalingClient.testConnectivity(url, 5000);
+      const res = await testSignalingConnectivity(url, 5000);
       setDiagResult(res);
     } catch (err: any) {
       console.error('[Layer3OnlineWarmupRecipe] Signaling connectivity diagnostic failed:', err);
@@ -140,9 +141,7 @@ export const Layer3OnlineWarmupRecipe: React.FC<Layer3OnlineWarmupRecipeProps> =
     roomConnectionProgress.startHost();
 
     try {
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem('car-soccer:player-name', trimmedName);
-      }
+      saveStoredPlayerName(trimmedName);
 
       const effectiveGameMode = roomType === 'match' ? gameMode : '3v3';
       let success = true;
@@ -209,9 +208,7 @@ export const Layer3OnlineWarmupRecipe: React.FC<Layer3OnlineWarmupRecipeProps> =
     roomConnectionProgress.startJoin();
 
     try {
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem('car-soccer:player-name', trimmedName);
-      }
+      saveStoredPlayerName(trimmedName);
 
       let success = true;
       if (bridge.onJoinOnlineWarmup) {

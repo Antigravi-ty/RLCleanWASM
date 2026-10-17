@@ -62,9 +62,6 @@ export function setRuntimePhysicsRate(r, rate, options = {}) {
   const normalized = options.round ? Math.round(Number(rate)) : Math.round(Number(rate) * 100) / 100;
   const clamped = Math.max(min, Math.min(max, normalized));
   r.physicsRate = clamped;
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('car-soccer:physics-rate-changed', { detail: { rate: clamped } }));
-  }
   return clamped;
 }
 
@@ -151,7 +148,7 @@ export async function spawnRuntimeHeadlessCarEntity(r) {
   }
 
   if (r.authoritativeServer && r.networkReconciler) {
-    const snap = r.authoritativeServer.sim.saveState();
+    const snap = r.authoritativeServer.sim.saveCompactState();
     const sTick = Math.floor(r.authoritativeServer.sim.getHeaderView().tickCount);
     r.networkReconciler.syncTimeline(snap, sTick);
   }
@@ -216,7 +213,7 @@ export async function spawnRuntimeDiagnosticTestFleet(r, options = {}) {
   }
 
   if (r.authoritativeServer && r.networkReconciler) {
-    const snap = r.authoritativeServer.sim.saveState();
+    const snap = r.authoritativeServer.sim.saveCompactState();
     const sTick = Math.floor(r.authoritativeServer.sim.getHeaderView().tickCount);
     r.networkReconciler.syncTimeline(snap, sTick);
   }

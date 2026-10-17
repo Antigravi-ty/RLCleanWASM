@@ -161,7 +161,7 @@ export class BotMatchMode extends BaseGameMode {
       r.authoritativeServer.lastReceivedControls?.clear?.();
     }
     if (r.networkReconciler) {
-      const sSnap = r.authoritativeServer ? r.authoritativeServer.sim.saveState() : r.physics.saveState();
+      const sSnap = r.authoritativeServer ? r.authoritativeServer.sim.saveCompactState() : r.physics.saveCompactState();
       const sTick = r.authoritativeServer ? Math.floor(r.authoritativeServer.sim.getHeaderView().tickCount) : 0;
       r.networkReconciler.syncTimeline(sSnap, sTick);
     }

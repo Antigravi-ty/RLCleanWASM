@@ -5,7 +5,10 @@
  */
 
 import * as THREE from 'three';
-import { createLocalStorageStore, stringOrDefault } from '../utils/StorageHelper.js';
+import {
+  STORAGE_KEY_DISPLAY_SETTINGS,
+  garageSettingsStore
+} from '../ui-system/core/configStorageHydrators.ts';
 import {
   HITBOX_PRESETS,
   CAR_VISUAL_IDS,
@@ -29,22 +32,10 @@ export {
   encodeVisualIdIndex,
   decodeVisualIdIndex,
   resolveHitboxIndex,
-  decodeHitboxIndex
-};
-
-export const STORAGE_KEY_DISPLAY_SETTINGS = "car-soccer.display-settings.v1";
-
-/**
- * Display settings store for car body selection.
- */
-export const garageSettingsStore = createLocalStorageStore(
+  decodeHitboxIndex,
   STORAGE_KEY_DISPLAY_SETTINGS,
-  () => ({ vehiclePreset: "game-car" }),
-  (target, stored) => {
-    target.vehiclePreset = stringOrDefault(stored.vehiclePreset || stored.carVisual, CAR_VISUAL_IDS, target.vehiclePreset);
-    target.carVisual = target.vehiclePreset;
-  }
-);
+  garageSettingsStore
+};
 
 /**
  * Constructs a procedural 3D whitebox car body based on a RocketSim hitbox preset.

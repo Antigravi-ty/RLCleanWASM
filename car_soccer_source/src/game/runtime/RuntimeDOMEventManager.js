@@ -220,7 +220,6 @@ export class RuntimeDOMEventManager {
     r._onToggleOscilloscope = () => {
       toggleFloatingPreset(EVENT_STREAM_OB_PRESET);
     };
-    window.addEventListener('car-soccer:toggle-oscilloscope', r._onToggleOscilloscope);
 
     r._onToggleDeterminism = async () => {
       if (!r.determinismHarness) {
@@ -229,7 +228,6 @@ export class RuntimeDOMEventManager {
       determinismStore.setHarness(r.determinismHarness);
       toggleFloatingPreset(DETERMINISM_HARNESS_PRESET);
     };
-    window.addEventListener('car-soccer:toggle-determinism', r._onToggleDeterminism);
 
     r._onToggleNetworkHUD = async () => {
       if (!r.networkReconciler) {
@@ -239,26 +237,7 @@ export class RuntimeDOMEventManager {
       await r.spawnHeadlessCarEntity();
       toggleFloatingPreset(NETWORK_DIAGNOSTICS_PRESET);
     };
-    window.addEventListener('car-soccer:toggle-network-hud', r._onToggleNetworkHUD);
-    window.addEventListener('car-soccer:reconnect-signaling', () => {
-      const session = r.multiplayerSession;
-      if (session?.signalingClient) {
-        session.signalingClient.reconnect?.();
-      }
-      useUIStore.getState().setOnlineSession({ signalingConnected: true });
-    });
-    window.addEventListener('car-soccer:ensure-determinism', async () => {
-      if (!r.determinismHarness) {
-        await r.enableDeterminismHarness(false);
-      }
-      determinismStore.setHarness(r.determinismHarness);
-    });
-    window.addEventListener('car-soccer:ensure-network-diagnostics', async () => {
-      if (!r.networkReconciler) {
-        await r.enableNetworkPrediction(false);
-      }
-      networkDiagnosticsStore.setSession(r.networkReconciler, r.networkChannel, r);
-    });
+
     window.dumpNextNetworkPacket = () => r.dumpNextNetworkPacket();
     window.dumpLatestNetworkPacket = (p) => r.dumpLatestNetworkPacket(p);
     window.toggleNetworkControlPanel = () => r._onToggleNetworkHUD?.();

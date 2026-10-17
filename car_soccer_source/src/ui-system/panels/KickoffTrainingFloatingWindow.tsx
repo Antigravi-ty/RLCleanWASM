@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import {
   useKickoffTrainingStore,
+  KICKOFF_SPAWNS,
   type KickoffSubMode,
   type KickoffSpeedPreset,
   type KickoffGhostPlacement,
@@ -19,7 +20,6 @@ import { SliderControl } from '../primitives/SliderControl';
 import { ToggleSwitch } from '../primitives/ToggleSwitch';
 import { Badge } from '../primitives/Badge';
 import { Button } from '../primitives/Button';
-import { KICKOFF_SPAWNS } from '../../ai/KickoffPPOAgent.js';
 
 export interface KickoffTrainingFloatingWindowProps {
   isLight?: boolean;

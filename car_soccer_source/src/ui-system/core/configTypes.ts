@@ -69,6 +69,32 @@ export interface CameraConfig {
   invertSwivel: boolean;
 }
 
+export const CAMERA_SETTINGS_STORAGE_KEY = 'car-soccer.camera-settings.v1';
+
+export const DEFAULT_CAMERA_SETTINGS: Readonly<CameraConfig> = Object.freeze({
+  cameraShake: false,
+  fov: 110,
+  distance: 270,
+  height: 90,
+  angleDeg: -4,
+  stiffness: 1,
+  swivelSpeed: 10,
+  transitionSpeed: 1.9,
+  invertSwivel: true,
+});
+
+export const CAMERA_RANGE_SETTINGS = Object.freeze([
+  { key: 'fov', label: 'Field of View', min: 60, max: 110, step: 1, decimals: 0, suffix: '°' },
+  { key: 'distance', label: 'Distance', min: 100, max: 400, step: 10, decimals: 2 },
+  { key: 'height', label: 'Height', min: 40, max: 200, step: 10, decimals: 2 },
+  { key: 'angleDeg', label: 'Angle', min: -15, max: 0, step: 1, decimals: 2, suffix: '°' },
+  { key: 'stiffness', label: 'Stiffness', min: 0, max: 1, step: 0.05, decimals: 2 },
+  { key: 'swivelSpeed', label: 'Swivel Speed', min: 1, max: 10, step: 0.1, decimals: 2 },
+  { key: 'transitionSpeed', label: 'Transition Speed', min: 1, max: 2, step: 0.1, decimals: 2 },
+]);
+
+export const CAMERA_RANGE_SETTINGS_MAP = new Map(CAMERA_RANGE_SETTINGS.map((i) => [i.key, i]));
+
 export type MenuPowerSaveOption = 'freeze' | '15' | '30' | 'match';
 
 export interface GraphicsConfig {
@@ -90,6 +116,8 @@ export interface VisualMaterialsConfig {
   boostPlumeLuminance: 'min' | 'balanced' | 'dynamic' | 'hdr';
 }
 
+export const MATERIALS_STORAGE_KEY = 'car-soccer.visual-materials.v1';
+
 export const DEFAULT_MATERIALS_CONFIG: VisualMaterialsConfig = {
   ballStyle: 'arcade',
   carPaint: 'arcade',
@@ -99,6 +127,44 @@ export const DEFAULT_MATERIALS_CONFIG: VisualMaterialsConfig = {
   boostFlameLuminance: 'balanced',
   boostPlumeLuminance: 'min',
 };
+
+export const STORAGE_KEY_DISPLAY_SETTINGS = 'car-soccer.display-settings.v1';
+
+export const CAR_VISUAL_IDS = Object.freeze([
+  'hitbox-octane',
+  'hitbox-dominus',
+  'hitbox-breakout',
+  'hitbox-hybrid',
+  'hitbox-plank',
+  'hitbox-merc',
+  'game-car',
+  'flat-car',
+]);
+
+export const THEMES = Object.freeze(['realistic', 'arcade']);
+export const DEFAULT_THEME = 'arcade';
+export const THEME_STORAGE_KEY = 'car-soccer.theme.v1';
+
+export const DEFAULT_SIGNALING_URL = 'wss://unstable.test.breadguy.link/ws';
+export const SIGNALING_ROOM_PREFIX = 'WEBRLROOM09211744-';
+
+export const COLOR_PREFS_KEY = 'car-soccer.color-preferences.v1';
+export const LEGACY_PREFERRED_COLOR_KEY = 'car-soccer:preferred-color';
+
+export interface StoredColorPrefs {
+  primaryTeam: 'blue' | 'orange';
+  blueOrder: number[];
+  orangeOrder: number[];
+}
+
+export const COLOR_SLOT_HEX_MAP: Readonly<Record<number, string>> = Object.freeze({
+  0: '#ff7043',
+  1: '#66bb6a',
+  2: '#ffc107',
+  3: '#42a5f5',
+  4: '#fd6e9d',
+  5: '#ba68c8',
+});
 
 export interface AudioConfig {
   masterVolume: number;
@@ -130,6 +196,8 @@ export interface TrajectoryConfig {
   duration?: number;
 }
 
+export const TRAJECTORY_STORAGE_KEY = 'car_soccer_ball_trajectory_config_v3';
+
 export const DEFAULT_TRAJECTORY_CONFIG: TrajectoryConfig = {
   enabled: true,
   predictionTicks: 600,
@@ -139,7 +207,7 @@ export const DEFAULT_TRAJECTORY_CONFIG: TrajectoryConfig = {
   opacity: 0.5,
   color: '#000000',
   dynamicMode: true,
-  duration: 5.0
+  duration: 5.0,
 };
 
 export interface BoostPadTunerConfig {

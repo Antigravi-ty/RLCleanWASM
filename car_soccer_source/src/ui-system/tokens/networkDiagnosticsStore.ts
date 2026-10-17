@@ -4,12 +4,8 @@ import {
   NETWORK_IMPAIRMENT_PRESETS,
   NETWORK_IMPAIRMENT_PRESET_LIST,
   CONNECTION_HEALTH_STATES,
-} from '../../network/diagnostics/NetworkImpairmentSimulator.js';
-import {
-  DEFAULT_DIAGNOSTIC_FLEET,
   ZERO_G_ANCHOR_MODES,
-  sampleDiagnosticFleetTelemetry,
-} from '../../network/DiagnosticsTestVehicles.js';
+} from './networkImpairmentConfig.ts';
 
 export {
   NETWORK_IMPAIRMENT_PRESETS,
@@ -195,13 +191,8 @@ export const networkDiagnosticsStore = {
         const lobbyGhostMode = Boolean(rt?.lobbyGhostModeEnabled ?? state.metrics.lobbyGhostMode);
 
         let probeTelemetry = state.metrics.probeTelemetry;
-        if (zeroGFleetEnabled && rt?.physics) {
-          const serverStateBuf = rt.authoritativeServer?.fallbackSim?.state || null;
-          probeTelemetry = sampleDiagnosticFleetTelemetry(
-            rt.physics,
-            serverStateBuf,
-            DEFAULT_DIAGNOSTIC_FLEET
-          ) as DiagnosticProbeTelemetry[];
+        if (zeroGFleetEnabled && rt?.sampleDiagnosticFleetTelemetry) {
+          probeTelemetry = (rt.sampleDiagnosticFleetTelemetry() || []) as DiagnosticProbeTelemetry[];
         }
 
         updateMetricsPatch({
@@ -431,12 +422,8 @@ export const networkDiagnosticsStore = {
     if (rt?.toggleDiagnosticTestFleet) {
       await rt.toggleDiagnosticTestFleet(nextEnabled, state.metrics.zeroGAnchorMode);
     }
-    const probeTelemetry = nextEnabled && rt?.physics
-      ? (sampleDiagnosticFleetTelemetry(
-          rt.physics,
-          rt.authoritativeServer?.fallbackSim?.state || null,
-          DEFAULT_DIAGNOSTIC_FLEET
-        ) as DiagnosticProbeTelemetry[])
+    const probeTelemetry = nextEnabled && rt?.sampleDiagnosticFleetTelemetry
+      ? ((rt.sampleDiagnosticFleetTelemetry() || []) as DiagnosticProbeTelemetry[])
       : [];
     updateMetricsPatch({
       zeroGFleetEnabled: nextEnabled,

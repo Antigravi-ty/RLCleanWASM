@@ -1,6 +1,7 @@
 import React from 'react';
 import { AlertCircle, Loader2, Activity, RotateCcw, Settings } from 'lucide-react';
-import { setSignalingUrl, DEFAULT_SIGNALING_URL } from '../../../network/SignalingConfig.js';
+import { setSignalingUrl } from '../../core/configStorageHydrators';
+import { DEFAULT_SIGNALING_URL } from '../../core/configTypes';
 import { pushQuickNotification } from '../../tokens/quickNotificationStore';
 import { dialogue } from '../../primitives/Dialogue';
 

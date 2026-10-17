@@ -14,7 +14,7 @@ import {
   setSelectedController,
   getConnectedGamepads,
   detectControllerType
-} from '../../input/InputBindings.js';
+} from '../tokens/inputBindingsStore';
 
 export interface Layer4AdvancedControllerRecipeProps {
   isLight?: boolean;

@@ -1,47 +1,14 @@
 /**
- * src/network/SignalingConfig.js
- * Centralized Configuration for WebSocket Signaling Worker.
+ * SignalingConfig.js
+ * Re-exports centralized configuration for WebSocket Signaling Worker from configStorageHydrators.
  */
 
-export const DEFAULT_SIGNALING_URL = 'wss://unstable.test.breadguy.link/ws';
-export const SIGNALING_ROOM_PREFIX = 'WEBRLROOM09211744-';
+export {
+  DEFAULT_SIGNALING_URL,
+  SIGNALING_ROOM_PREFIX
+} from '../ui-system/core/configTypes.ts';
 
-let _memorySignalingUrl = null;
-
-/**
- * Retrieves the effective signaling server URL (checks localStorage first, falls back to memory / default)
- * @returns {string}
- */
-export function getSignalingUrl() {
-  if (typeof localStorage !== 'undefined') {
-    try {
-      const custom = localStorage.getItem('car_soccer_signaling_url');
-      if (custom && custom.trim()) {
-        return custom.trim();
-      }
-    } catch (err) {
-      console.warn('[SignalingConfig] Error reading signaling URL from localStorage:', err);
-    }
-  }
-  return _memorySignalingUrl || DEFAULT_SIGNALING_URL;
-}
-
-/**
- * Persists a customized signaling server URL to localStorage & in-memory cache
- * @param {string|null} url
- */
-export function setSignalingUrl(url) {
-  const clean = url && typeof url === 'string' && url.trim() ? url.trim() : null;
-  _memorySignalingUrl = clean;
-  if (typeof localStorage !== 'undefined') {
-    try {
-      if (clean) {
-        localStorage.setItem('car_soccer_signaling_url', clean);
-      } else {
-        localStorage.removeItem('car_soccer_signaling_url');
-      }
-    } catch (err) {
-      console.warn('[SignalingConfig] Error persisting signaling URL to localStorage:', err);
-    }
-  }
-}
+export {
+  getSignalingUrl,
+  setSignalingUrl
+} from '../ui-system/core/configStorageHydrators.ts';

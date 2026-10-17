@@ -3,7 +3,7 @@ import {
   saveInputBindings,
   assignBinding,
   getEffectiveGamepad,
-} from '../../../input/InputBindings.js';
+} from '../../tokens/inputBindingsStore';
 import type { ListeningTarget } from './KeybindingSlots';
 
 export function cloneBindingsMap(bindings: any) {

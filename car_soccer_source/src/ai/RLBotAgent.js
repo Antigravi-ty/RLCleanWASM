@@ -16,7 +16,9 @@ import {
   BallStateView,
   BoostPadStateView
 } from '../physics/RocketSimStateViews.js';
-import { createLocalStorageStore, stringOrDefault } from '../utils/StorageHelper.js';
+import { botSettingsStore } from '../ui-system/core/configStorageHydrators.ts';
+
+export { botSettingsStore };
 
 // Reusable zero-allocation views for agent observation pipelines
 const sHeaderView = new ArenaHeaderView();
@@ -71,17 +73,6 @@ export const BOT_POLICIES = Object.freeze([
 export function getBotPolicy(botId) {
   return BOT_POLICIES.find(p => p.id === botId);
 }
-
-/**
- * LocalStorage persistent settings store for selected AI bot
- */
-export const botSettingsStore = createLocalStorageStore(
-  "car-soccer.bot-settings.v1",
-  () => ({ botId: "nexto" }),
-  (target, source) => {
-    target.botId = stringOrDefault(source.botId, BOT_POLICIES.map(p => p.id), target.botId);
-  }
-);
 
 /**
  * Default neutral car controls schema.

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Hourglass, Play, Sparkles } from 'lucide-react';
-import { BoostPadTunerConfig } from '../../core/store';
+import { BoostPadTunerConfig, useUIStore } from '../../core/store';
 import { TunerRow, TunerColorRow, TunerToggleRow } from './BoostPadTunerControls';
 
 export interface BoostPadRefillTabProps {
@@ -23,15 +23,7 @@ export const BoostPadRefillTab: React.FC<BoostPadRefillTabProps> = ({
     if (typeof onSimulateRefill === 'function') {
       onSimulateRefill(target);
     } else {
-      if (typeof window !== 'undefined') {
-        const runtime = (window as unknown as { __CAR_SOCCER_GAME_RUNTIME__?: { arena?: { boostPadSystem?: { simulateRefill?: (i: number) => void; simulateRefillAll?: () => void } } } }).__CAR_SOCCER_GAME_RUNTIME__;
-        if (target === 'all') {
-          runtime?.arena?.boostPadSystem?.simulateRefillAll?.();
-        } else {
-          runtime?.arena?.boostPadSystem?.simulateRefill?.(target);
-        }
-        window.dispatchEvent(new CustomEvent('car-soccer:boostpad-simulate-refill', { detail: { target } }));
-      }
+      useUIStore.getState().bridge.onSimulateBoostPadRefill?.(target);
     }
     setTimeout(() => setSimulatingIndex(null), 3000);
   };

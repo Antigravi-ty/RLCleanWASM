@@ -15,12 +15,10 @@ export class TelemetryStage {
 
     if (playerCarView) {
       const hasFlipNow = !playerCarView.isDemoed && Boolean(playerCarView.isOnGround || playerCarView.hasFlipOrJump);
-      hudStore?.getState?.()?.setHasFlip?.(hasFlipNow);
-
-      if (r.speedometerHUD) {
-        const carSpeed = playerCarView.isDemoed ? 0 : Math.hypot(playerCarView.velX, playerCarView.velY, playerCarView.velZ);
-        r.speedometerHUD.update(carSpeed);
-      }
+      const carSpeed = playerCarView.isDemoed ? 0 : Math.hypot(playerCarView.velX, playerCarView.velY, playerCarView.velZ);
+      const hudState = hudStore?.getState?.();
+      hudState?.setHasFlip?.(hasFlipNow);
+      hudState?.setCarSpeed?.(carSpeed);
     }
 
     if (r.profiler) {

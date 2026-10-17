@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { mountGameUI, useUIStore, syncMaterialsToGame, hudStore } from '../../ui-system/index';
 import { BallTrajectoryPredictor } from '../../entities/BallTrajectoryPredictor.js';
-import { SpeedometerHUD } from '../../ui-system/hud/SpeedometerHUD.js';
 import { CameraManager } from '../../camera/CameraManager.js';
 import { RocketSimPhysicsEngine, getTeamAssignment } from '../../physics/RocketSimPhysicsEngine.js';
 import { PhysicsStateInterpolator } from '../../physics/PhysicsStateInterpolator.js';
@@ -23,7 +22,8 @@ import {
   ShaderPass,
   OutputPass,
   EffectComposer,
-  RoomEnvironment
+  RoomEnvironment,
+  applyVisualMaterialsConfig
 } from '../../effects/index.js';
 import { ArenaWorld } from '../../entities/ArenaWorld.js';
 import { EntityManager } from '../../entities/EntityManager.js';
@@ -45,9 +45,6 @@ export async function setupRuntimePhysics(runtime, options = {}) {
   runtime.interpolator = new PhysicsStateInterpolator(runtime.physics);
   runtime.interpolator.onPhysicsRateChange = (nextRate) => {
     runtime.physicsRate = nextRate;
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('car-soccer:physics-rate-changed', { detail: { rate: nextRate } }));
-    }
   };
   runtime.match = new ClientMatchStateMirror();
   runtime.bot = new RLBotAgent(botSettingsStore.load().botId);
@@ -79,6 +76,7 @@ export async function setupRuntimeScene(runtime, onProgress = null) {
   runtime.entityManager.spawnVehicle(0, { team: 0, visual: selectedPreset, isPlayer: true });
   runtime.arena.addPads(runtime.physics.getPads());
 
+  runtime.applyVisualMaterialsConfig = applyVisualMaterialsConfig;
   syncMaterialsToGame(runtime, useUIStore.getState().materials);
 
   const onBallControlHandler = actionId => {
@@ -114,8 +112,6 @@ export async function setupRuntimeScene(runtime, onProgress = null) {
   }
 
   runtime.activeGraphicsSettings = { ...DEFAULT_GRAPHICS_SETTINGS };
-
-  runtime.speedometerHUD = new SpeedometerHUD(runtime.container || (typeof document !== 'undefined' ? document.body : null));
 
   runtime.ballTrajectoryPredictor = new BallTrajectoryPredictor(runtime.arena?.scene, {}, runtime.physics?.ballRadius || 91.25, runtime.physics);
 
@@ -306,22 +302,13 @@ export function destroyRuntimeInstance(runtime) {
     runtime.camera.dispose?.();
     runtime.camera = null;
   }
-  if (runtime._onToggleOscilloscope && typeof window !== 'undefined') {
-    window.removeEventListener('car-soccer:toggle-oscilloscope', runtime._onToggleOscilloscope);
-    runtime._onToggleOscilloscope = null;
-  }
-  if (runtime._onToggleDeterminism && typeof window !== 'undefined') {
-    window.removeEventListener('car-soccer:toggle-determinism', runtime._onToggleDeterminism);
-    runtime._onToggleDeterminism = null;
-  }
+  runtime._onToggleOscilloscope = null;
+  runtime._onToggleDeterminism = null;
   if (runtime.determinismHarness) {
     runtime.determinismHarness.destroy?.();
     runtime.determinismHarness = null;
   }
-  if (runtime._onToggleNetworkHUD && typeof window !== 'undefined') {
-    window.removeEventListener('car-soccer:toggle-network-hud', runtime._onToggleNetworkHUD);
-    runtime._onToggleNetworkHUD = null;
-  }
+  runtime._onToggleNetworkHUD = null;
   if (runtime.authoritativeServer) {
     runtime.authoritativeServer.destroy?.();
     runtime.authoritativeServer = null;
@@ -337,10 +324,6 @@ export function destroyRuntimeInstance(runtime) {
   if (runtime.ballTrajectoryPredictor) {
     runtime.ballTrajectoryPredictor.dispose?.();
     runtime.ballTrajectoryPredictor = null;
-  }
-  if (runtime.speedometerHUD) {
-    runtime.speedometerHUD.destroy?.();
-    runtime.speedometerHUD = null;
   }
   if (runtime.gameUI) {
     runtime.gameUI.destroy?.();

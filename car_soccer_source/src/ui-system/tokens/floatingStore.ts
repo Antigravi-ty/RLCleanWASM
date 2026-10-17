@@ -56,19 +56,10 @@ export interface FloatingWindowState {
   opacity: number;
 }
 
-const getInitialFloatingOpacity = (): number => {
-  if (typeof window === 'undefined') return 30;
-  try {
-    const raw = localStorage.getItem('car-soccer.floating-window-opacity.v1');
-    if (raw !== null) {
-      const num = parseInt(raw, 10);
-      if (!Number.isNaN(num)) return Math.min(100, Math.max(1, num));
-    }
-  } catch (err) {
-    console.warn("[floatingStore] Failed to read opacity from localStorage:", err);
-  }
-  return 30;
-};
+import {
+  getInitialFloatingOpacity,
+  saveFloatingOpacity,
+} from '../core/configStorageHydrators';
 
 let state: FloatingWindowState = {
   windows: [],
@@ -397,11 +388,7 @@ export const floatingStore = {
   /** Set global opacity for all floating windows (clamped between 1 and 100) */
   setOpacity: (val: number) => {
     const clamped = Math.min(100, Math.max(1, Math.round(val)));
-    try {
-      localStorage.setItem('car-soccer.floating-window-opacity.v1', String(clamped));
-    } catch (err) {
-      console.warn("[floatingStore] Failed to persist opacity to localStorage:", err);
-    }
+    saveFloatingOpacity(clamped);
     state = {
       ...state,
       opacity: clamped,

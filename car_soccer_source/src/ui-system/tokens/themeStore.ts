@@ -1,28 +1,11 @@
 import { useSyncExternalStore } from 'react';
 import { AccentColor, ACCENT_THEMES, AccentThemeToken } from './colors';
+import { safeStorage } from '../core/configStorageHydrators';
 
 export interface AccentThemeState {
   accent: AccentColor;
   tokens: AccentThemeToken;
 }
-
-const safeStorage = {
-  get: (k: string, fallback: string | null = null): string | null => {
-    try {
-      return typeof localStorage !== 'undefined' ? localStorage.getItem(k) ?? fallback : fallback;
-    } catch (err) {
-      console.warn(`[themeStore:safeStorage] Error reading key "${k}" from localStorage:`, err);
-      return fallback;
-    }
-  },
-  set: (k: string, v: string): void => {
-    try {
-      if (typeof localStorage !== 'undefined') localStorage.setItem(k, v);
-    } catch (err) {
-      console.warn(`[themeStore:safeStorage] Error writing key "${k}" to localStorage:`, err);
-    }
-  },
-};
 
 const getInitialAccent = (): AccentColor => {
   const saved = safeStorage.get('ui-storybook-accent-theme');

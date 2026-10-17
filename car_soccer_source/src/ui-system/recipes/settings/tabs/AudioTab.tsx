@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { VStack } from '../../../layout/VStack';
 import { SettingSliderRow } from '../components/SettingSliderRow';
 import { SettingToggleRow } from '../components/SettingToggleRow';
-import { audioConfig, AUDIO_SETTINGS_CHANGED_EVENT } from '../../../../audio/AudioArchitecture.js';
+import { audioConfig } from '../../../tokens/audioConfigStore';
 
 export interface AudioTabProps {
   isLight?: boolean;
@@ -31,8 +31,7 @@ export const AudioTab: React.FC<AudioTabProps> = ({
         boostVolume: Math.min(100, Math.max(0, Math.round((audioConfig.get('boostVolume') ?? 0.8) * 100))),
       });
     };
-    window.addEventListener(AUDIO_SETTINGS_CHANGED_EVENT, handleAudioSync);
-    return () => window.removeEventListener(AUDIO_SETTINGS_CHANGED_EVENT, handleAudioSync);
+    return audioConfig.subscribe(handleAudioSync);
   }, []);
 
   const handleUpdateAudio = (key: string, val: number | boolean) => {

@@ -12,6 +12,9 @@ import {
   CAR_STATE_STRIDE,
   CAR_STATE_OFFSETS,
   BALL_STATE_STRIDE,
+  NUM_BOOST_PADS,
+  BOOST_PAD_STATES_OFFSET,
+  BOOST_PAD_STATE_STRIDE,
   PHYSICS_EVENT_TYPES,
   INCIDENT_EVENT_TYPES,
   SURFACE_SUBTYPES
@@ -284,7 +287,7 @@ export function restoreWasmSnapshotState(engine, buffer) {
       }
       const numCars = Math.min(
         MAX_CARS,
-        Math.max(engine.numCars || 0, Math.round(engine.state[SIM_OFFSETS.HEADER + 2] || 0))
+        Math.max(engine.numCars || 0, Math.round(engine.state[SIM_OFFSETS.NUM_CARS] || 0))
       );
       if (typeof engine.module._physics_setCarState === 'function') {
         for (let c = 0; c < numCars; c++) {
@@ -303,19 +306,22 @@ export function restoreWasmSnapshotState(engine, buffer) {
         const heapU32 = engine.module.HEAPU32;
         const heapF32 = engine.module.HEAPF32;
         if (heapU32) {
-          const incomingTick = Math.max(0, Math.round(buffer[SIM_OFFSETS.HEADER + 3] || 0));
+          const incomingTick = Math.max(0, Math.round(buffer[SIM_OFFSETS.TICK] || 0));
           heapU32[wOffset] = incomingTick >>> 0;
           heapU32[wOffset + 1] = 0;
         }
-        // Patch 34 boost pad states into ArenaSnapshotPod (offset 2 + 21 + 8*504 = 4055, stride 4)
-        const padSnapBase = wOffset + 4055;
+        // Patch 34 boost pad states into ArenaSnapshotPod (offset 67, stride 3: [isActive (u32), cooldown (f32), curLockedCarId (u32)])
+        const padSnapBase = wOffset + 67;
         for (let p = 0; p < NUM_BOOST_PADS; p++) {
           const srcPadIdx = BOOST_PAD_STATES_OFFSET + p * BOOST_PAD_STATE_STRIDE;
           if (srcPadIdx + 1 < size) {
             const isActive = buffer[srcPadIdx] >= 0.5 ? 1 : 0;
             const cooldown = buffer[srcPadIdx + 1];
-            if (heapU32) heapU32[padSnapBase + p * 4] = isActive;
-            heapF32[padSnapBase + p * 4 + 1] = cooldown;
+            if (heapU32) {
+              heapU32[padSnapBase + p * 3] = isActive;
+              if (isActive) heapU32[padSnapBase + p * 3 + 2] = 0;
+            }
+            heapF32[padSnapBase + p * 3 + 1] = cooldown;
           }
         }
         engine.module._physics_restoreState(engine.wasmStatePtr);

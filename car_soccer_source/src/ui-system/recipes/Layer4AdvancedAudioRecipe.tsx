@@ -7,10 +7,9 @@ import { VStack } from '../layout/VStack';
 import {
   getAudioSettings,
   exportAudioSettingsJson,
-  AUDIO_SETTINGS_CHANGED_EVENT,
   DEFAULT_AUDIO_CONFIG,
   audioConfig
-} from '../../audio/AudioArchitecture.js';
+} from '../tokens/audioConfigStore';
 
 export interface Layer4AdvancedAudioRecipeProps {
   isLight?: boolean;
@@ -219,8 +218,7 @@ export const Layer4AdvancedAudioRecipe: React.FC<Layer4AdvancedAudioRecipeProps>
     const handleSync = () => {
       setAudioSettings({ ...getAudioSettings() });
     };
-    window.addEventListener(AUDIO_SETTINGS_CHANGED_EVENT, handleSync);
-    return () => window.removeEventListener(AUDIO_SETTINGS_CHANGED_EVENT, handleSync);
+    return audioConfig.subscribe(handleSync);
   }, []);
 
   const handleUpdateVolume = (key: string, percentVal: number) => {

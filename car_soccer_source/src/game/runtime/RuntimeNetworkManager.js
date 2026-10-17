@@ -69,9 +69,9 @@ export class RuntimeNetworkManager {
       }
 
       r.authoritativeServer.sim.setUnlimitedBoost(r.physics.isUnlimitedBoost);
-      r.authoritativeServer.sim.restoreState(r.physics.saveState());
+      r.authoritativeServer.sim.restoreState(r.physics.saveCompactState());
 
-      const serverSnap = r.authoritativeServer.sim.saveState();
+      const serverSnap = r.authoritativeServer.sim.saveCompactState();
       const serverTick = Math.floor(r.authoritativeServer.sim.getHeaderView().tickCount);
 
       const pacingMode = useUIStore?.getState?.()?.clockPacingMode || 'legacy';
@@ -179,7 +179,7 @@ export class RuntimeNetworkManager {
     // Lobby and Warmup both use unlimited boost until the competitive match starts
     r.physics.setUnlimitedBoost(true);
 
-    const initialSnapshot = r.physics.saveState();
+    const initialSnapshot = r.physics.saveCompactState();
     r.authoritativeServer = new HostServerWorker(null, {
       snapshotInterval: 1,
       initialState: Array.from(initialSnapshot),
@@ -216,7 +216,7 @@ export class RuntimeNetworkManager {
     }
     r.playerCarIndex = 0;
 
-    const serverSnap = r.authoritativeServer.sim.saveState();
+    const serverSnap = r.authoritativeServer.sim.saveCompactState();
     const serverTick = Math.floor(r.authoritativeServer.sim.getHeaderView().tickCount);
 
     const pacingMode = useUIStore?.getState?.()?.clockPacingMode || 'legacy';
@@ -478,6 +478,12 @@ export class RuntimeNetworkManager {
 
   setDiagnosticObservationTarget(targetCarIndex = 0) {
     return setRuntimeDiagnosticObservationTarget(this.runtime, targetCarIndex);
+  }
+
+  sampleDiagnosticFleetTelemetry() {
+    if (!this.runtime?.physics) return [];
+    const serverStateBuf = this.runtime.authoritativeServer?.fallbackSim?.state || null;
+    return sampleDiagnosticFleetTelemetry(this.runtime.physics, serverStateBuf, DEFAULT_DIAGNOSTIC_FLEET);
   }
 
   async enableDeterminismHarness(showHUD = true) {

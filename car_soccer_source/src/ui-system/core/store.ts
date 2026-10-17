@@ -6,19 +6,15 @@ import {
   cloneDriftwoodsConfig,
   mergeDriftwoodsConfig,
   type DriftwoodsTunerConfig,
-} from '../../entities/stadium/driftwoods/DriftwoodsConfigurator';
-import {
-  DEFAULT_CAMERA_SETTINGS
-} from '../../config/cameraDefaults.js';
-import {
-  getMaterialsConfig,
-  setMaterialsConfig
-} from '../../config/materialsConfig.js';
+} from './driftwoodsConfig';
 import {
   UIState,
   ClockPacingMode,
   ROUTE_PARENT_MAP,
   safeStorage,
+  DEFAULT_CAMERA_SETTINGS,
+  getMaterialsConfig,
+  setMaterialsConfig,
   DEFAULT_MATERIALS_CONFIG,
   DEFAULT_TRAJECTORY_CONFIG,
   DEFAULT_BOOST_PAD_TUNER_CONFIG,

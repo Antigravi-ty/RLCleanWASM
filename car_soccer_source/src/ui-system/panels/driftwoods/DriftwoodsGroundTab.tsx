@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link2, Unlink2, RotateCcw } from 'lucide-react';
-import type { DriftwoodsGroundConfig } from '../../../entities/stadium/driftwoods/DriftwoodsConfigurator';
+import type { DriftwoodsGroundConfig } from '../../core/driftwoodsConfig';
 import {
   TunerRow,
   TunerColorRow,

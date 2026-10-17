@@ -12,6 +12,7 @@ import {
   toAudioCoordinates,
   calculateDistanceGain
 } from './spatialAudioMath.js';
+import { audioConfig } from './audioConfig.js';
 
 export {
   UU_TO_METERS,
@@ -404,10 +405,8 @@ export class SpatialAudioSource {
   }
 }
 
-if (typeof window !== 'undefined') {
-  window.addEventListener('car-soccer:audio-settings-changed', (e) => {
-    if (e && e.detail) {
-      updateSpatialConfig(e.detail);
-    }
-  });
-}
+audioConfig.subscribe((cfg) => {
+  if (cfg) {
+    updateSpatialConfig(cfg);
+  }
+});

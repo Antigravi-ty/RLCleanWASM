@@ -26,7 +26,7 @@ export * from './configStorageHydrators';
 import {
   type DriftwoodsTunerConfig,
   type DriftwoodsPreset
-} from '../../entities/stadium/driftwoods/DriftwoodsConfigurator';
+} from './driftwoodsConfig';
 
 export interface UIState {
   isOpen: boolean;
@@ -185,6 +185,10 @@ export interface UIState {
     onClockPacingModeChange?: (mode: ClockPacingMode) => void;
     onInputBufferTargetChange?: (target: number) => void;
     onInputBufferThresholdChange?: (range: [number, number]) => void;
+    onEnsureDeterminism?: () => void;
+    onEnsureNetworkDiagnostics?: () => void;
+    onSimulateBoostPadCollect?: (padIndex: number | 'all') => void;
+    onSimulateBoostPadRefill?: (padIndex: number | 'all', duration?: number) => void;
   };
   setBridge: (bridge: Partial<UIState['bridge']>) => void;
 }

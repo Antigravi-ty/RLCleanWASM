@@ -74,7 +74,9 @@ export function evaluateControlPacket(admin, channelId, packetType, packetData, 
     });
 
     if (admin.dataHandler) {
-      const initialSnap = admin.physicsManager?.sim?.saveState ? Array.from(admin.physicsManager.sim.saveState()) : null;
+      const sim = admin.physicsManager?.sim;
+      const rawSnap = sim?.saveCompactState ? sim.saveCompactState() : sim?.saveState?.();
+      const initialSnap = rawSnap ? Array.from(rawSnap) : null;
       admin.dataHandler.sendPacket(channelId, JSON.stringify({
         type: 'handshake_response',
         entityId: playerInfo.entityId,

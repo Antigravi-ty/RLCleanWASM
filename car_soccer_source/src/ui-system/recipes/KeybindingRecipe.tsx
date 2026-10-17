@@ -14,8 +14,6 @@ import { hudStore } from '../hud/hudStore';
 import {
   INPUT_ACTIONS,
   XBOX_BUTTON_NAMES,
-} from '../../input/InputConstants.js';
-import {
   loadInputBindings,
   saveInputBindings,
   assignBinding,
@@ -23,7 +21,7 @@ import {
   resetDeviceBindings,
   getEffectiveGamepad,
   detectControllerType,
-} from '../../input/InputBindings.js';
+} from '../tokens/inputBindingsStore';
 import {
   KeybindingActionRow,
   type ListeningTarget

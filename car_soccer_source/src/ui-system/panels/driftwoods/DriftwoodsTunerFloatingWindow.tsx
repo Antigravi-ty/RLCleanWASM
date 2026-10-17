@@ -12,7 +12,7 @@ import {
   Video
 } from 'lucide-react';
 import { useUIStore } from '../../core/store';
-import { DRIFTWOODS_PRESETS, DriftwoodsPreset } from '../../../entities/stadium/driftwoods/DriftwoodsConfigurator';
+import { DRIFTWOODS_PRESETS, DriftwoodsPreset } from '../../core/driftwoodsConfig';
 import { DriftwoodsGroundTab } from './DriftwoodsGroundTab';
 import { DriftwoodsSurfacesTab } from './DriftwoodsSurfacesTab';
 import { DriftwoodsTransparentTab } from './DriftwoodsTransparentTab';

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { formatBindingDisplayName, loadInputBindings } from '../../input/InputBindings.js';
+import { formatBindingDisplayName, loadInputBindings } from '../tokens/inputBindingsStore';
 
 export interface HudStoreState {
   // Ball Camera
@@ -7,11 +7,12 @@ export interface HudStoreState {
   ballCamShortcut: string | null;
   onToggleBallCam: (() => void) | null;
 
-  // Boost & Flip Inventory
+  // Boost, Flip & Speed Inventory
   boostAmount: number;
   isBoosting: boolean;
   isUnlimited: boolean;
   hasFlip: boolean;
+  carSpeed: number;
 
   // Match & Scoreboard State
   blueScore: number;
@@ -43,6 +44,7 @@ export interface HudStoreState {
   toggleBallCam: () => void;
   setBoost: (amount: number, isBoosting?: boolean, isUnlimited?: boolean) => void;
   setHasFlip: (hasFlip: boolean) => void;
+  setCarSpeed: (speed: number) => void;
   setReplayState: (state: Partial<{
     replayProgress: number;
     replayFrameIndex: number;
@@ -111,6 +113,7 @@ export const useHudStore = create<HudStoreState>((set, get) => ({
   isBoosting: false,
   isUnlimited: true,
   hasFlip: true,
+  carSpeed: 0,
 
   blueScore: 0,
   orangeScore: 0,
@@ -180,6 +183,12 @@ export const useHudStore = create<HudStoreState>((set, get) => ({
     const val = Boolean(hasFlip);
     if (get().hasFlip === val) return;
     set({ hasFlip: val });
+  },
+
+  setCarSpeed: (rawSpeed: number) => {
+    const v = Math.max(0, Math.min(2300, Math.round(Math.abs(rawSpeed || 0) * 10) / 10));
+    if (Math.abs(v - get().carSpeed) < 0.2) return;
+    set({ carSpeed: v });
   },
 
   setReplayState: (partialReplay) => {

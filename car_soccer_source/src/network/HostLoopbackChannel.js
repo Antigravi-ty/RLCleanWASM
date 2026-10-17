@@ -23,17 +23,24 @@ export function createHostSimProxy(hostWorker) {
     restoreState: (state) => {
       if (state) {
         const arr = state instanceof Float32Array ? state : new Float32Array(state);
-        hostWorker.cachedSnapshot.set(arr);
-        const u32 = new Uint32Array(arr.buffer, arr.byteOffset, 1);
-        if (u32[0] > 0 || !Number.isNaN(arr[0])) {
-          hostWorker.lastServerTick = u32[0];
+        const copyLen = Math.min(arr.length, hostWorker.cachedSnapshot.length);
+        hostWorker.cachedSnapshot.subarray(0, copyLen).set(arr.subarray(0, copyLen));
+        const tickVal = arr.length <= 512
+          ? Math.floor(arr[0])
+          : new Uint32Array(arr.buffer, arr.byteOffset, 1)[0];
+        if (tickVal >= 0 && !Number.isNaN(tickVal)) {
+          hostWorker.lastServerTick = tickVal;
         }
       }
       if (hostWorker.isWorker && hostWorker.worker) {
         return hostWorker._sendRequest('restoreState', {
           state: state instanceof Float32Array ? Array.from(state) : state
         }).then((res) => {
-          if (res.snapshot) hostWorker.cachedSnapshot.set(res.snapshot);
+          if (res.snapshot) {
+            const snapArr = res.snapshot instanceof Float32Array ? res.snapshot : new Float32Array(res.snapshot);
+            const copyLen = Math.min(snapArr.length, hostWorker.cachedSnapshot.length);
+            hostWorker.cachedSnapshot.subarray(0, copyLen).set(snapArr.subarray(0, copyLen));
+          }
           if (res.tickCount !== undefined) hostWorker.lastServerTick = res.tickCount;
           return hostWorker.cachedSnapshot;
         });
@@ -45,14 +52,18 @@ export function createHostSimProxy(hostWorker) {
     },
     saveState: (targetBuf) => {
       if (!hostWorker.isWorker && hostWorker.fallbackSim) {
-        return hostWorker.fallbackSim.saveState(targetBuf);
+        return typeof hostWorker.fallbackSim.saveCompactState === 'function'
+          ? hostWorker.fallbackSim.saveCompactState(targetBuf)
+          : hostWorker.fallbackSim.saveState(targetBuf);
       }
       if (targetBuf) {
-        targetBuf.set(hostWorker.cachedSnapshot);
+        const copyLen = Math.min(targetBuf.length, hostWorker.cachedSnapshot.length);
+        targetBuf.subarray(0, copyLen).set(hostWorker.cachedSnapshot.subarray(0, copyLen));
         return targetBuf;
       }
       return new Float32Array(hostWorker.cachedSnapshot);
     },
+    saveCompactState: (targetBuf) => sim.saveState(targetBuf),
     getHeaderView: () => {
       if (!hostWorker.isWorker && hostWorker.fallbackSim) {
         return hostWorker.fallbackSim.getHeaderView();
@@ -80,13 +91,16 @@ export function createHostSimProxy(hostWorker) {
         hostWorker.fallbackPhysics.resetGoalLatch();
       }
     },
-    setCarState: (carIndex, state) => {
+    setCarState: (carIndex, stateObj) => {
       if (hostWorker.isWorker && hostWorker.worker) {
-        const serialized = state instanceof Float32Array ? Array.from(state) : state;
-        hostWorker._postCommand('setCarState', { carIndex, state: serialized });
-      } else if (hostWorker.fallbackSim) {
-        hostWorker.fallbackSim.setCarState(carIndex, state);
+        const serialized = stateObj instanceof Float32Array ? Array.from(stateObj) : stateObj;
+        hostWorker._postCommand('setCarState', { carIndex, state: serialized, stateObj: serialized });
+        return 1;
       }
+      if (hostWorker.fallbackSim) {
+        return hostWorker.fallbackSim.setCarState(carIndex, stateObj);
+      }
+      return 0;
     },
     setCarCollisionMask: (carIndex, interactWithBall = true, interactWithCars = true) => {
       if (hostWorker.isWorker && hostWorker.worker) {
@@ -95,21 +109,26 @@ export function createHostSimProxy(hostWorker) {
           interactWithBall: Boolean(interactWithBall),
           interactWithCars: Boolean(interactWithCars)
         });
-        return true;
-      } else if (hostWorker.fallbackPhysics) {
-        hostWorker.fallbackPhysics.setCarCollisionMask(carIndex, interactWithBall, interactWithCars);
-        return true;
+        return 1;
       }
-      return false;
+      if (hostWorker.fallbackPhysics) {
+        hostWorker.fallbackPhysics.setCarCollisionMask(carIndex, interactWithBall, interactWithCars);
+        return 1;
+      }
+      if (hostWorker.fallbackSim) {
+        return hostWorker.fallbackSim.setCarCollisionMask(carIndex, interactWithBall, interactWithCars);
+      }
+      return 0;
     },
     setCarLinearFactorAndGravity: (carIndex, fx = 1, fy = 1, fz = 1, gravityScale = 1) => {
       if (hostWorker.isWorker && hostWorker.worker) {
         hostWorker._postCommand('setCarLinearFactorAndGravity', { carIndex, fx, fy, fz, gravityScale });
-        return true;
-      } else if (hostWorker.fallbackSim) {
+        return 1;
+      }
+      if (hostWorker.fallbackSim) {
         return hostWorker.fallbackSim.setCarLinearFactorAndGravity(carIndex, fx, fy, fz, gravityScale);
       }
-      return false;
+      return 0;
     },
     setArenaMutators: (mutators) => {
       if (hostWorker.isWorker && hostWorker.worker) {
@@ -132,41 +151,7 @@ export function createHostSimProxy(hostWorker) {
       if (!hostWorker.isWorker && hostWorker.fallbackSim) {
         return hostWorker.fallbackSim.getStateSnapshotSize();
       }
-      return hostWorker.cachedSnapshot.length || 4201;
-    },
-    setCarState: (carIndex, stateObj) => {
-      if (hostWorker.isWorker && hostWorker.worker) {
-        hostWorker._postCommand('setCarState', { carIndex, stateObj });
-        return 1;
-      }
-      if (hostWorker.fallbackSim) {
-        return hostWorker.fallbackSim.setCarState(carIndex, stateObj);
-      }
-      return 0;
-    },
-    setCarLinearFactorAndGravity: (carIndex, fx = 1, fy = 1, fz = 1, gravityScale = 1) => {
-      if (hostWorker.isWorker && hostWorker.worker) {
-        hostWorker._postCommand('setCarLinearFactorAndGravity', { carIndex, fx, fy, fz, gravityScale });
-        return 1;
-      }
-      if (hostWorker.fallbackSim) {
-        return hostWorker.fallbackSim.setCarLinearFactorAndGravity(carIndex, fx, fy, fz, gravityScale);
-      }
-      return 0;
-    },
-    setCarCollisionMask: (carIndex, interactWithBall = true, interactWithCars = true) => {
-      if (hostWorker.isWorker && hostWorker.worker) {
-        hostWorker._postCommand('setCarCollisionMask', {
-          carIndex,
-          interactWithBall: Boolean(interactWithBall),
-          interactWithCars: Boolean(interactWithCars)
-        });
-        return 1;
-      }
-      if (hostWorker.fallbackSim) {
-        return hostWorker.fallbackSim.setCarCollisionMask(carIndex, interactWithBall, interactWithCars);
-      }
-      return 0;
+      return hostWorker.cachedSnapshot.length || 424;
     }
   };
   return sim;

@@ -20,6 +20,14 @@ import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 
+import {
+  TRAJECTORY_STORAGE_KEY
+} from '../ui-system/core/configTypes.ts';
+import {
+  loadSavedTrajectorySettings,
+  saveTrajectorySettings
+} from '../ui-system/core/configStorageHydrators.ts';
+
 export const DEFAULT_TRAJECTORY_SETTINGS = Object.freeze({
   enabled: true,
   predictionTicks: 600,        // 60 - 600 ticks (default: 600 ticks = 5.0s @ 120Hz)
@@ -31,37 +39,11 @@ export const DEFAULT_TRAJECTORY_SETTINGS = Object.freeze({
   dynamicMode: true            // true: Ball pushes line (default: true)
 });
 
-export const TRAJECTORY_STORAGE_KEY = 'car_soccer_ball_trajectory_config_v3';
-
-export function loadSavedTrajectorySettings() {
-  try {
-    const raw = localStorage.getItem(TRAJECTORY_STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      return {
-        enabled: typeof parsed.enabled === 'boolean' ? parsed.enabled : DEFAULT_TRAJECTORY_SETTINGS.enabled,
-        predictionTicks: Math.min(600, Math.max(60, Number(parsed.predictionTicks) || DEFAULT_TRAJECTORY_SETTINGS.predictionTicks)),
-        solidTicks: Math.min(240, Math.max(5, Number(parsed.solidTicks) || DEFAULT_TRAJECTORY_SETTINGS.solidTicks)),
-        transparentTicks: Math.min(240, Math.max(5, Number(parsed.transparentTicks) || DEFAULT_TRAJECTORY_SETTINGS.transparentTicks)),
-        thickness: Math.min(75, Math.max(1, Number(parsed.thickness) || DEFAULT_TRAJECTORY_SETTINGS.thickness)),
-        opacity: Math.min(1.0, Math.max(0.05, Number(parsed.opacity) || DEFAULT_TRAJECTORY_SETTINGS.opacity)),
-        color: typeof parsed.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(parsed.color) ? parsed.color : DEFAULT_TRAJECTORY_SETTINGS.color,
-        dynamicMode: typeof parsed.dynamicMode === 'boolean' ? parsed.dynamicMode : DEFAULT_TRAJECTORY_SETTINGS.dynamicMode
-      };
-    }
-  } catch (err) {
-    console.warn('[BallTrajectoryPredictor] Failed to load settings from localStorage:', err);
-  }
-  return { ...DEFAULT_TRAJECTORY_SETTINGS };
-}
-
-export function saveTrajectorySettings(settings) {
-  try {
-    localStorage.setItem(TRAJECTORY_STORAGE_KEY, JSON.stringify(settings));
-  } catch (err) {
-    console.warn('[BallTrajectoryPredictor] Failed to save settings to localStorage:', err);
-  }
-}
+export {
+  TRAJECTORY_STORAGE_KEY,
+  loadSavedTrajectorySettings,
+  saveTrajectorySettings
+};
 
 export class BallTrajectoryPredictor {
   /**

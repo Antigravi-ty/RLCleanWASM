@@ -1,5 +1,3 @@
-import staticAudioConfig from './audioConfig.json' with { type: 'json' };
-
 // Audio Asset Definitions (100% Unified under /custom/assets/audio/)
 export const BALL_HIT_AUDIO_FILES = Object.freeze([
   "/custom/assets/audio/impacts/vehicle-body-01.m4a",
@@ -110,78 +108,15 @@ export const BOOST_START_AUDIO_FILE = "/custom/assets/audio/boost/start.m4a";
 export const BOOST_LOOP_AUDIO_FILE = "/custom/assets/audio/boost/loop.m4a";
 export const BOOST_RELEASE_AUDIO_FILE = "/custom/assets/audio/boost/release.m4a";
 
-// Console Log Physics Event Catalog
-export const CONSOLE_LOG_EVENT_CATALOG = Object.freeze([
-  { type: 0x01, hex: '0x01', id: 'CAR_BALL_HIT', name: 'Car-Ball Hit', category: 'Incident' },
-  { type: 0x02, hex: '0x02', id: 'CAR_CAR_BUMP', name: 'Car-Car Bump', category: 'Incident' },
-  { type: 0x03, hex: '0x03', id: 'CAR_CAR_DEMO', name: 'Car Demolition', category: 'Incident' },
-  { type: 0x04, hex: '0x04', id: 'BALL_WORLD_HIT', name: 'Ball-World Collision', category: 'Incident' },
-  { type: 0x05, hex: '0x05', id: 'BALL_GOALPOST_HIT', name: 'Ball-Goalpost Collision', category: 'Incident' },
-  { type: 0x06, hex: '0x06', id: 'CAR_JUMP', name: 'Single Jump', category: 'Incident' },
-  { type: 0x07, hex: '0x07', id: 'CAR_DOUBLE_JUMP', name: 'Double Jump', category: 'Incident' },
-  { type: 0x08, hex: '0x08', id: 'CAR_DODGE', name: 'Dodge / Flip', category: 'Incident' },
-  { type: 0x09, hex: '0x09', id: 'CAR_SUPERSONIC_ENTER', name: 'Supersonic Entry', category: 'Incident' },
-  { type: 0x0A, hex: '0x0a', id: 'BOOST_PICKUP', name: 'Boost Pad Pickup', category: 'Incident' },
-  { type: 0x0B, hex: '0x0b', id: 'BOOST_SPAWN', name: 'Boost Pad Respawn', category: 'Incident' },
-  { type: 0x0C, hex: '0x0c', id: 'CAR_BOOST_START', name: 'Car Boost Start', category: 'Incident' },
-  { type: 0x0D, hex: '0x0d', id: 'CAR_BOOST_STOP', name: 'Car Boost Stop', category: 'Incident' },
-  { type: 0x0E, hex: '0x0e', id: 'GOAL_SCORED', name: 'Goal Scored', category: 'Incident' },
-  { type: 0x0F, hex: '0x0f', id: 'FLIP_RESET_GAINED', name: 'Flip Reset Gained', category: 'Incident' },
-  { type: 0x10, hex: '0x10', id: 'BALL_STATE_CHANGE', name: 'Ball State Change', category: 'Incident' },
-  { type: 0x11, hex: '0x11', id: 'POSSESSION_CHANGE', name: 'Possession Change', category: 'Incident' },
-
-  { type: 0x80, hex: '0x80', id: 'MATCH_START', name: 'Match Start', category: 'Signal' },
-  { type: 0x81, hex: '0x81', id: 'KICKOFF_PREPARE', name: 'Kickoff Prepare', category: 'Signal' },
-  { type: 0x82, hex: '0x82', id: 'KICKOFF_GO', name: 'Kickoff Go', category: 'Signal' },
-  { type: 0x83, hex: '0x83', id: 'COUNTDOWN_TICK', name: 'Countdown Tick', category: 'Signal' },
-  { type: 0x84, hex: '0x84', id: 'MATCH_PAUSE', name: 'Match Pause', category: 'Signal' },
-  { type: 0x85, hex: '0x85', id: 'MATCH_RESUME', name: 'Match Resume', category: 'Signal' },
-  { type: 0x86, hex: '0x86', id: 'OVERTIME_START', name: 'Overtime Start', category: 'Signal' },
-  { type: 0x87, hex: '0x87', id: 'MATCH_END', name: 'Match End', category: 'Signal' },
-  { type: 0x88, hex: '0x88', id: 'REPLAY_START', name: 'Replay Start', category: 'Signal' },
-  { type: 0x89, hex: '0x89', id: 'REPLAY_END', name: 'Replay End', category: 'Signal' }
-]);
-
-export function createDefaultLogEventFilter() {
-  const filter = {};
-  for (const item of CONSOLE_LOG_EVENT_CATALOG) {
-    filter[item.hex.toLowerCase()] = false;
-  }
-  return filter;
-}
-
-// Math & Coordinate Utilities
-export function clamp01(v) {
-  return Math.max(0, Math.min(1, Number(v) || 0));
-}
-
-export function clampVolume(v) {
-  return Math.max(0, Math.min(5.0, Number(v) || 0));
-}
-
-export function dbToLinear(dB) {
-  return Math.pow(10, dB / 20);
-}
-
-export const AUDIO_SETTINGS_KEY = "car-soccer.audio-architecture.v1";
-export const AUDIO_CONFIG_STORAGE_KEY = AUDIO_SETTINGS_KEY;
-export const AUDIO_SETTINGS_CHANGED_EVENT = "car-soccer:audio-settings-changed";
-
-export const DEFAULT_AUDIO_CONFIG = Object.freeze({
-  ...staticAudioConfig,
-  carBallSoundMode: 'vehicle_body',
-  carCarSoundMode: 'vehicle_detail',
-  boostCollectVolume: 2.0,
-  endgameVolume: 2.0,
-  countdown10sVolume: 1.0,
-  spatialPanningModel: 'equalpower',
-  distanceModel: 'smoothstep',
-  distanceUnitScale: 0.01,
-  rolloffMinDistance: 400.0,
-  rolloffMaxDistance: 13000.0,
-  minAudibleGainFloor: 0.15,
-  airAbsorptionDamping: 0.0,
-  logEventFilter: createDefaultLogEventFilter()
-});
-
-export const DEFAULT_AUDIO_SETTINGS = DEFAULT_AUDIO_CONFIG;
+export {
+  CONSOLE_LOG_EVENT_CATALOG,
+  createDefaultLogEventFilter,
+  clamp01,
+  clampVolume,
+  dbToLinear,
+  AUDIO_SETTINGS_KEY,
+  AUDIO_CONFIG_STORAGE_KEY,
+  AUDIO_SETTINGS_CHANGED_EVENT,
+  DEFAULT_AUDIO_CONFIG,
+  DEFAULT_AUDIO_SETTINGS
+} from '../ui-system/tokens/audioConfigStore.ts';

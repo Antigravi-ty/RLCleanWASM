@@ -11,8 +11,7 @@ import { DEFAULT_PANEL_SIZING } from '../tokens';
 import { UnderlineTabs, TabItem } from '../primitives/UnderlineTabs';
 import { Badge } from '../primitives/Badge';
 import { UnderConstructionPlaceholder } from '../primitives/UnderConstructionPlaceholder';
-import { useUIStore } from '../core/store';
-import { garageSettingsStore } from '../../config/vehiclePresets.js';
+import { useUIStore, garageSettingsStore } from '../core/store';
 import {
   CARS,
   BLUE_TEAM_COLORS,
@@ -20,6 +19,7 @@ import {
   COLOR_PREFS_KEY,
   StoredColorPrefs,
   loadStoredColorPrefs,
+  saveStoredColorPrefs,
   ColorDef,
   CarDef
 } from './garage/garageConstants';
@@ -77,24 +77,9 @@ export const Layer2GarageRecipe: React.FC<Layer2GarageRecipeProps> = ({
   // Helper to persist and broadcast active color to game runtime
   const saveAndBroadcastColors = (nextPrefs: StoredColorPrefs) => {
     setColorPrefs(nextPrefs);
-    try {
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(COLOR_PREFS_KEY, JSON.stringify(nextPrefs));
-        const activeSlotId =
-          nextPrefs.primaryTeam === 'blue'
-            ? nextPrefs.blueOrder[0]
-            : nextPrefs.orangeOrder[0];
-        localStorage.setItem('car-soccer:preferred-color', String(activeSlotId));
-      }
-    } catch (err) {
-      console.warn('[Layer2GarageRecipe] Failed to save color preferences to localStorage:', err);
-    }
+    const activeSlotId = saveStoredColorPrefs(nextPrefs);
 
     // Find the highest priority color for single player / training
-    const activeSlotId =
-      nextPrefs.primaryTeam === 'blue'
-        ? nextPrefs.blueOrder[0]
-        : nextPrefs.orangeOrder[0];
     const allColors = [...BLUE_TEAM_COLORS, ...ORANGE_TEAM_COLORS];
     const found = allColors.find((c) => c.id === activeSlotId);
     if (found) {

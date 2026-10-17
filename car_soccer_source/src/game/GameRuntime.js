@@ -341,6 +341,9 @@ export class GameRuntime {
   setDiagnosticObservationTarget(targetCarIndex = 0) {
     return this.networkManager.setDiagnosticObservationTarget(targetCarIndex);
   }
+  sampleDiagnosticFleetTelemetry() {
+    return this.networkManager.sampleDiagnosticFleetTelemetry();
+  }
   setLobbyGhostMode(enabled = true, interactWithBall = false) {
     return this.networkManager.setLobbyGhostMode(enabled, interactWithBall);
   }

@@ -196,9 +196,7 @@ export const MenuShell: React.FC<MenuShellProps> = ({ inspectorSlot }) => {
             label: 'Reconnect',
             color: 'amber',
             onClick: () => {
-              if (typeof window !== 'undefined') {
-                window.dispatchEvent(new CustomEvent('car-soccer:reconnect-signaling'));
-              }
+              useUIStore.getState().bridge.onReconnectSignaling?.();
             },
           },
         ],

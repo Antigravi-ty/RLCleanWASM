@@ -1,5 +1,4 @@
 import { audioConfig } from './audioConfig.js';
-import { AUDIO_SETTINGS_CHANGED_EVENT } from './audioConstants.js';
 import { getAudioSlotPool, registerAudioEngine } from './audioContext.js';
 import { StateAudioEngine } from './StateAudioEngine.js';
 import { VehicleAudioManager } from './VehicleAudioManager.js';
@@ -22,14 +21,12 @@ export class GameAudioEngineFacade {
 
     registerAudioEngine(this);
 
-    if (typeof window !== "undefined") {
-      window.addEventListener(AUDIO_SETTINGS_CHANGED_EVENT, () => {
-        const panModel = audioConfig.get('spatialPanningModel') || 'equalpower';
-        this.vehicleManager?.updatePanningModel?.(panModel);
-        this.ballEngine?.updatePanningModel?.(panModel);
-        getAudioSlotPool()?.updatePanningModel?.(panModel);
-      });
-    }
+    audioConfig.subscribe(() => {
+      const panModel = audioConfig.get('spatialPanningModel') || 'equalpower';
+      this.vehicleManager?.updatePanningModel?.(panModel);
+      this.ballEngine?.updatePanningModel?.(panModel);
+      getAudioSlotPool()?.updatePanningModel?.(panModel);
+    });
   }
 
   async preload(onProgress = null) {

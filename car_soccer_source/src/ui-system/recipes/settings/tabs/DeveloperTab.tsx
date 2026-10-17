@@ -19,10 +19,9 @@ import { SettingSegmentedRow } from '../components/SettingSegmentedRow';
 import { SettingSliderRow } from '../components/SettingSliderRow';
 import {
   audioConfig,
-  AUDIO_SETTINGS_CHANGED_EVENT,
   setCarBallSoundMode,
   setCarCarSoundMode,
-} from '../../../../audio/AudioArchitecture.js';
+} from '../../../tokens/audioConfigStore';
 import {
   EVENT_STREAM_OB_PRESET,
   DETERMINISM_HARNESS_PRESET,
@@ -64,12 +63,7 @@ export const DeveloperTab: React.FC<DeveloperTabProps> = ({
       setCarBallMode(String(audioConfig.get('carBallSoundMode') || 'vehicle_body'));
       setCarCarMode(String(audioConfig.get('carCarSoundMode') || 'vehicle_detail'));
     };
-    if (typeof window !== 'undefined') {
-      window.addEventListener(AUDIO_SETTINGS_CHANGED_EVENT, handleSettingsChanged);
-      return () => {
-        window.removeEventListener(AUDIO_SETTINGS_CHANGED_EVENT, handleSettingsChanged);
-      };
-    }
+    return audioConfig.subscribe(handleSettingsChanged);
   }, []);
 
   const onCarBallModeChange = (mode: string) => {

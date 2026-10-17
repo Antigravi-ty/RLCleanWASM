@@ -9,6 +9,12 @@ import { HostSessionController } from './HostSessionController.js';
 import { ClientSessionController } from './ClientSessionController.js';
 import { CAR_COLOR_SLOTS } from '../../config/vehicleConstants.js';
 import { roomConnectionProgress } from '../RoomConnectionProgressManager.js';
+import {
+  loadStoredPlayerName,
+  getPreferredColorSlot,
+  saveActiveHostOffer,
+  clearActiveHostOffer
+} from '../../ui-system/core/configStorageHydrators.ts';
 
 export class MultiplayerSessionManager {
   /**
@@ -55,30 +61,12 @@ export class MultiplayerSessionManager {
   }
 
   _loadPlayerName() {
-    try {
-      if (typeof localStorage !== 'undefined') {
-        const n = localStorage.getItem('car_soccer_player_name');
-        if (n && n.trim()) return n.trim().substring(0, 16);
-      }
-    } catch (err) {
-      console.warn('[MultiplayerSessionManager] Failed to read player name from localStorage:', err);
-    }
-    return 'Player';
+    return loadStoredPlayerName('Player').substring(0, 16);
   }
 
   _loadPreferredColorSlot() {
-    try {
-      if (typeof localStorage !== 'undefined') {
-        const val = localStorage.getItem('car_soccer_preferred_color_slot');
-        if (val !== null) {
-          const idx = parseInt(val, 10);
-          if (!isNaN(idx) && idx >= 0 && idx < CAR_COLOR_SLOTS.length) return idx;
-        }
-      }
-    } catch (err) {
-      console.warn('[MultiplayerSessionManager] Failed to read preferred color slot from localStorage:', err);
-    }
-    return null;
+    const idx = getPreferredColorSlot();
+    return idx >= 0 && idx < CAR_COLOR_SLOTS.length ? idx : null;
   }
 
   get hostP2PChannel() {
@@ -153,20 +141,14 @@ export class MultiplayerSessionManager {
 
     const offerToken = await this.hostController.initializeChannel();
 
-    if (typeof localStorage !== 'undefined') {
-      try {
-        localStorage.setItem('car_soccer_active_host', JSON.stringify({
-          roomId: this.roomId,
-          token: offerToken,
-          colorSlot: this.hostColorSlot,
-          colorHex: this.hostColorHex,
-          playerName: this.playerName,
-          timestamp: Date.now(),
-        }));
-      } catch (err) {
-        console.warn('[MultiplayerSessionManager] Failed to post host offer to broadcast channel:', err);
-      }
-    }
+    saveActiveHostOffer({
+      roomId: this.roomId,
+      token: offerToken,
+      colorSlot: this.hostColorSlot,
+      colorHex: this.hostColorHex,
+      playerName: this.playerName,
+      timestamp: Date.now(),
+    });
 
     this.initHostSignaling();
     roomConnectionProgress.complete('Room Active. Ready for Players');
@@ -388,13 +370,7 @@ export class MultiplayerSessionManager {
       this.hostController.cleanup();
       this.hostController = null;
     }
-    if (typeof localStorage !== 'undefined') {
-      try {
-        localStorage.removeItem('car_soccer_active_host');
-      } catch (err) {
-        console.warn('[MultiplayerSessionManager] Failed to remove active host marker from localStorage:', err);
-      }
-    }
+    clearActiveHostOffer();
     if (this.callbacks.onStopServer) {
       await this.callbacks.onStopServer();
     }

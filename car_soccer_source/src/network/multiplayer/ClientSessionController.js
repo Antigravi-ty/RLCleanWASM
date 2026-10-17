@@ -4,6 +4,7 @@
  */
 
 import { P2PWebRTCChannel } from '../P2PWebRTCChannel.js';
+import { loadActiveHostOffer } from '../../ui-system/core/configStorageHydrators.ts';
 
 export class ClientSessionController {
   /**
@@ -63,37 +64,33 @@ export class ClientSessionController {
       clientColorHex: this.colorHex,
     });
 
-    // Check localStorage for active host offer in this room
+    // Check active host offer in this room
     this._checkLocalStorageOffer();
 
     return this.channel;
   }
 
   _checkLocalStorageOffer() {
-    if (typeof localStorage === 'undefined') return;
     try {
-      const raw = localStorage.getItem('car_soccer_active_host');
-      if (raw) {
-        const hostInfo = JSON.parse(raw);
-        if (hostInfo && hostInfo.roomId === this.roomId && hostInfo.token) {
-          this.channel.acceptOfferAndCreateAnswer(hostInfo.token, {
-            clientColorSlot: this.colorSlot,
-            clientColorHex: this.colorHex,
-          }).then((answer) => {
-            this.answerToken = answer;
-            this.channel._sendRoomMessage({
-              type: 'room_answer',
-              sdp: answer,
-              roomId: this.roomId,
-              clientName: this.playerName,
-            });
-          }).catch((err) => {
-            console.warn('[ClientSessionController] Failed to ingest local active host offer:', err);
+      const hostInfo = loadActiveHostOffer();
+      if (hostInfo && hostInfo.roomId === this.roomId && hostInfo.token) {
+        this.channel.acceptOfferAndCreateAnswer(hostInfo.token, {
+          clientColorSlot: this.colorSlot,
+          clientColorHex: this.colorHex,
+        }).then((answer) => {
+          this.answerToken = answer;
+          this.channel._sendRoomMessage({
+            type: 'room_answer',
+            sdp: answer,
+            roomId: this.roomId,
+            clientName: this.playerName,
           });
-        }
+        }).catch((err) => {
+          console.warn('[ClientSessionController] Failed to ingest local active host offer:', err);
+        });
       }
     } catch (e) {
-      console.warn('[ClientSessionController] Error checking local active host in localStorage:', e);
+      console.warn('[ClientSessionController] Error checking local active host:', e);
     }
   }
 

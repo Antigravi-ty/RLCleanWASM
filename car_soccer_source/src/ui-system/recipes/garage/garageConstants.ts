@@ -1,3 +1,19 @@
+import {
+  COLOR_PREFS_KEY,
+  type StoredColorPrefs,
+} from '../../core/configTypes';
+import {
+  loadStoredColorPrefs,
+  saveStoredColorPrefs,
+} from '../../core/configStorageHydrators';
+
+export {
+  COLOR_PREFS_KEY,
+  type StoredColorPrefs,
+  loadStoredColorPrefs,
+  saveStoredColorPrefs,
+};
+
 // 1. Car Tab: 8 vehicles with accurate names and hitboxes (Octane, Dominus, Breakout, Hybrid, Plank, Merc)
 export interface CarDef {
   id: string;
@@ -35,48 +51,3 @@ export const ORANGE_TEAM_COLORS: ColorDef[] = [
   { id: 4, name: 'Neon Pink', hex: '#fd6e9d', team: 1 },
   { id: 0, name: 'Flame Red', hex: '#ff7043', team: 1 },
 ];
-
-export const COLOR_PREFS_KEY = 'car-soccer.color-preferences.v1';
-
-export interface StoredColorPrefs {
-  primaryTeam: 'blue' | 'orange';
-  blueOrder: number[];
-  orangeOrder: number[];
-}
-
-export function loadStoredColorPrefs(): StoredColorPrefs {
-  try {
-    if (typeof localStorage !== 'undefined') {
-      const raw = localStorage.getItem(COLOR_PREFS_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed && Array.isArray(parsed.blueOrder) && Array.isArray(parsed.orangeOrder)) {
-          return {
-            primaryTeam: parsed.primaryTeam === 'blue' ? 'blue' : 'orange',
-            blueOrder: parsed.blueOrder,
-            orangeOrder: parsed.orangeOrder,
-          };
-        }
-      }
-      // Check legacy multiplayer preferred-color slot
-      const legacySlot = localStorage.getItem('car-soccer:preferred-color');
-      if (legacySlot !== null) {
-        const slot = Number(legacySlot);
-        if ([2, 4, 0].includes(slot)) {
-          const rest = [2, 4, 0].filter((s) => s !== slot);
-          return { primaryTeam: 'orange', blueOrder: [1, 5, 3], orangeOrder: [slot, ...rest] };
-        } else if ([1, 5, 3].includes(slot)) {
-          const rest = [1, 5, 3].filter((s) => s !== slot);
-          return { primaryTeam: 'blue', blueOrder: [slot, ...rest], orangeOrder: [2, 4, 0] };
-        }
-      }
-    }
-  } catch (err) {
-    console.warn('[Layer2GarageRecipe] Failed to load stored color preferences:', err);
-  }
-  return {
-    primaryTeam: 'orange',
-    orangeOrder: [2, 4, 0],
-    blueOrder: [1, 5, 3],
-  };
-}

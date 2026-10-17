@@ -9,16 +9,9 @@ import {
   getKickoffPPOActorWeights,
   preloadKickoffPPOWeights,
 } from './kickoffPPOWeights.js';
+import { KICKOFF_SPAWNS } from '../ui-system/tokens/kickoffTrainingStore';
 
-export { preloadKickoffPPOWeights };
-
-export const KICKOFF_SPAWNS = [
-  { index: 0, key: '1', id: 'left-front',  label: '1 · Left Diagonal',  shortLabel: 'LF', x: -2048.0, y: -2560.0 },
-  { index: 1, key: '2', id: 'left-back',   label: '2 · Left Back',      shortLabel: 'LB', x: -256.0,  y: -3840.0 },
-  { index: 2, key: '3', id: 'center-back', label: '3 · Center Back',    shortLabel: 'CB', x: 0.0,     y: -4608.0 },
-  { index: 3, key: '4', id: 'right-back',  label: '4 · Right Back',     shortLabel: 'RB', x: 256.0,   y: -3840.0 },
-  { index: 4, key: '5', id: 'right-front', label: '5 · Right Diagonal', shortLabel: 'RF', x: 2048.0,  y: -2560.0 },
-];
+export { preloadKickoffPPOWeights, KICKOFF_SPAWNS };
 
 export const KICKOFF_SETTLE_TICKS = KICKOFF_PPO_META.settleTicks || 30;
 export const TICKS_PER_DECISION = KICKOFF_PPO_META.actionRepeat || 4;

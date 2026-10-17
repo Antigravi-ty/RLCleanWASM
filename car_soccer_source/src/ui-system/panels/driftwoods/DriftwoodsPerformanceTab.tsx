@@ -1,6 +1,6 @@
 import React from 'react';
 import { Zap, Cpu, CheckCircle2, Trash2 } from 'lucide-react';
-import type { DriftwoodsTunerConfig } from '../../../entities/stadium/driftwoods/DriftwoodsConfigurator';
+import type { DriftwoodsTunerConfig } from '../../core/driftwoodsConfig';
 import { TunerToggleRow } from './DriftwoodsTunerControls';
 
 export interface DriftwoodsPerformanceTabProps {

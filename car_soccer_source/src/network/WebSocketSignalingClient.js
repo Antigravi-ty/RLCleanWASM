@@ -351,76 +351,8 @@ export class WebSocketSignalingClient {
     this.isConnected = false;
   }
 
-  /**
-   * Diagnostic helper to test signaling server WebSocket handshake and round-trip latency.
-   * Eliminates unhandled console errors during probe.
-   * @param {string} endpointUrl
-   * @param {number} [timeoutMs=5000]
-   * @returns {Promise<{ ok: boolean, rttMs: number, error: string | null }>}
-   */
   static async testConnectivity(endpointUrl, timeoutMs = 5000) {
-    const wsUrl = endpointUrl || 'wss://unstable.test.breadguy.link/ws';
-    const separator = wsUrl.includes('?') ? '&' : '?';
-    const testUrl = `${wsUrl}${separator}ping_test=1&t=${Date.now()}`;
-    const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now();
-
-    return new Promise((resolve) => {
-      let resolved = false;
-      let timer = null;
-      let sock = null;
-
-      const finish = (result) => {
-        if (resolved) return;
-        resolved = true;
-        if (timer) clearTimeout(timer);
-        if (sock) {
-          try {
-            if (sock.readyState === 0) {
-              sock.onopen = () => { try { sock.close(1000, 'Diagnostic probe finished'); } catch (err) { console.warn('[WebSocketSignalingClient] Diagnostic probe close error on open:', err); } };
-              sock.onerror = null;
-              sock.onclose = null;
-            } else if (sock.readyState === 1) {
-              sock.close(1000, 'Diagnostic probe finished');
-            }
-          } catch (err) {
-            console.warn('[WebSocketSignalingClient] Diagnostic probe close error:', err);
-          }
-        }
-        resolve(result);
-      };
-
-      timer = setTimeout(() => {
-        finish({
-          ok: false,
-          rttMs: Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0),
-          error: `Connection timed out after ${timeoutMs}ms (server unreachable or cold start)`,
-        });
-      }, timeoutMs);
-
-      try {
-        const WebSocketConstructor = typeof WebSocket !== 'undefined' ? WebSocket : null;
-        if (!WebSocketConstructor) {
-          return finish({ ok: false, rttMs: 0, error: 'WebSocket is not supported in this environment' });
-        }
-        sock = new WebSocketConstructor(testUrl);
-        sock.onopen = () => {
-          const rttMs = Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0);
-          finish({ ok: true, rttMs, error: null });
-        };
-        sock.onerror = () => {
-          const rttMs = Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0);
-          finish({ ok: false, rttMs, error: 'WebSocket connection failed (network unreachable or TLS error)' });
-        };
-        sock.onclose = (ev) => {
-          if (!resolved) {
-            const rttMs = Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0);
-            finish({ ok: false, rttMs, error: `Connection closed immediately by server (code ${ev.code})` });
-          }
-        };
-      } catch (err) {
-        console.warn('[WebSocketSignalingClient] testConnectivity unexpected failure:', err);
-        finish({ ok: false, rttMs: 0, error: err?.message || String(err) });
-      }
-    });
+    const { testSignalingConnectivity } = await import('../ui-system/tokens/onlineConnectionStore.ts');
+    return testSignalingConnectivity(endpointUrl, timeoutMs);
   }
 }

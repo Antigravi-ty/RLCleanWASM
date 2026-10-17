@@ -4,7 +4,7 @@ import {
   setGoalpostHitThreshold,
   setCarBallHitCooldownMs,
   setGoalpostHitCooldownMs,
-} from '../../audio/AudioArchitecture.js';
+} from './audioConfigStore';
 
 export interface PhysicsEventRecord {
   timestamp: number;

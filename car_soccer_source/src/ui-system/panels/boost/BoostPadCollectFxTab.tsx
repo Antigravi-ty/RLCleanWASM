@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Zap, Play, Sparkles, Copy, Check, CircleDot, Flame } from 'lucide-react';
-import { BoostPadTunerConfig } from '../../core/store';
+import { BoostPadTunerConfig, useUIStore } from '../../core/store';
 import { TunerRow } from './BoostPadTunerControls';
 import { CubicBezierGraph } from './CubicBezierGraph';
 import { OrbTrajectoryChart } from './OrbTrajectoryChart';
@@ -26,19 +26,7 @@ export const BoostPadCollectFxTab: React.FC<BoostPadCollectFxTabProps> = ({
     if (typeof onSimulate === 'function') {
       onSimulate(target);
     } else {
-      if (typeof window !== 'undefined') {
-        const runtime = (window as unknown as { __CAR_SOCCER_GAME_RUNTIME__?: { arena?: { boostPadSystem?: { simulateCollect?: (i: number) => void; simulateCollectAll?: () => void } } } }).__CAR_SOCCER_GAME_RUNTIME__;
-        if (target === 'all') {
-          runtime?.arena?.boostPadSystem?.simulateCollectAll?.();
-        } else {
-          runtime?.arena?.boostPadSystem?.simulateCollect?.(target);
-        }
-        window.dispatchEvent(
-          new CustomEvent('car-soccer:boostpad-simulate-collect', {
-            detail: { padIndex: target, target },
-          })
-        );
-      }
+      useUIStore.getState().bridge.onSimulateBoostPadCollect?.(target);
     }
     setTimeout(() => setSimulatingIndex(null), 500);
   };

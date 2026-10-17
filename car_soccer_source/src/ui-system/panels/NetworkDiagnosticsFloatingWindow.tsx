@@ -7,6 +7,7 @@ import {
   ZERO_G_ANCHOR_MODES,
 } from '../tokens/networkDiagnosticsStore';
 import { NetworkImpairmentControlsSection } from './network-diagnostics/NetworkImpairmentControlsSection';
+import { useUIStore } from '../core/store';
 
 export interface NetworkDiagnosticsFloatingWindowProps {
   isLight?: boolean;
@@ -39,7 +40,7 @@ export const NetworkDiagnosticsFloatingWindow: React.FC<NetworkDiagnosticsFloati
   }
 
   useEffect(() => {
-    window.dispatchEvent(new CustomEvent('car-soccer:ensure-network-diagnostics'));
+    useUIStore.getState().bridge.onEnsureNetworkDiagnostics?.();
   }, []);
 
   const handleCopyJSON = async () => {

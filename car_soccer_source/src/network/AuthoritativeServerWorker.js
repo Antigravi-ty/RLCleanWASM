@@ -438,7 +438,7 @@ export async function handleAuthoritativeWorkerMessage(eventOrData, customPostMe
     case 'restoreState': {
       const { state, reqId } = data;
       if (sim && state) sim.restoreState(state);
-      const snap = sim ? sim.saveState() : null;
+      const snap = sim ? (sim.saveCompactState ? sim.saveCompactState() : sim.saveState()) : null;
       const tickCount = sim ? Math.floor(sim.getHeaderView().tickCount) : 0;
       emit({ type: 'requestResponse', reqId, result: { snapshot: snap, tickCount } });
       break;
@@ -446,7 +446,7 @@ export async function handleAuthoritativeWorkerMessage(eventOrData, customPostMe
 
     case 'saveState': {
       const { reqId } = data;
-      const snap = sim ? sim.saveState() : null;
+      const snap = sim ? (sim.saveCompactState ? sim.saveCompactState() : sim.saveState()) : null;
       const tickCount = sim ? Math.floor(sim.getHeaderView().tickCount) : 0;
       emit({ type: 'requestResponse', reqId, result: { snapshot: snap, tickCount } });
       break;

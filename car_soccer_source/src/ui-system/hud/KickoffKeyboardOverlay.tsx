@@ -2,9 +2,9 @@ import React from 'react';
 import {
   useKickoffTrainingStore,
   KICKOFF_OVERLAY_KEY_ORDER,
+  KICKOFF_SPAWNS,
   type KickoffOverlayKey,
 } from '../tokens/kickoffTrainingStore';
-import { KICKOFF_SPAWNS } from '../../ai/KickoffPPOAgent.js';
 
 export interface KickoffKeyboardOverlayProps {
   isLight?: boolean;

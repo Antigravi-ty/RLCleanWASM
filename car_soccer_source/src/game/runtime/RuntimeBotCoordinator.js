@@ -160,7 +160,7 @@ export class RuntimeBotCoordinator {
       r.authoritativeServer = null;
     }
 
-    const initialSnapshot = r.physics.saveState();
+    const initialSnapshot = r.physics.saveCompactState();
 
     const presetId = r.selectedPreset === 'flat-car' ? 'flat' : 'octane';
 
@@ -192,7 +192,7 @@ export class RuntimeBotCoordinator {
     }
     r.playerCarIndex = 0;
 
-    const serverSnap = r.authoritativeServer.sim.saveState();
+    const serverSnap = r.authoritativeServer.sim.saveCompactState();
     const serverTick = Math.floor(r.authoritativeServer.sim.getHeaderView().tickCount);
 
     const uiState = useUIStore?.getState?.();

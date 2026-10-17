@@ -7,13 +7,12 @@ import { VStack } from '../layout/VStack';
 import { StepperSliderRow } from './settings/components/StepperSliderRow';
 import {
   audioConfig,
-  AUDIO_SETTINGS_CHANGED_EVENT,
   CONSOLE_LOG_EVENT_CATALOG,
   selectAllEventLogs,
   deselectAllEventLogs,
   setEventLogFilterItem,
   createDefaultLogEventFilter
-} from '../../audio/AudioArchitecture.js';
+} from '../tokens/audioConfigStore';
 
 export interface Layer4EventAndTriggererRecipeProps {
   isLight?: boolean;
@@ -56,8 +55,7 @@ export const Layer4EventAndTriggererRecipe: React.FC<Layer4EventAndTriggererReci
         logEventFilter: audioConfig.config?.logEventFilter || createDefaultLogEventFilter(),
       });
     };
-    window.addEventListener(AUDIO_SETTINGS_CHANGED_EVENT, handleSync);
-    return () => window.removeEventListener(AUDIO_SETTINGS_CHANGED_EVENT, handleSync);
+    return audioConfig.subscribe(handleSync);
   }, []);
 
   const updateSetting = (key: string, val: any) => {

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Plus, X, Sparkles } from 'lucide-react';
 import { KeycapBadge } from '../../primitives/KeycapBadge';
-import { formatBindingDisplayName } from '../../../input/InputBindings.js';
+import { formatBindingDisplayName } from '../../tokens/inputBindingsStore';
 
 export const GAMEPAD_QUICK_PRESETS = [
   'A', 'B', 'X', 'Y',

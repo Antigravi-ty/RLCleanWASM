@@ -6,7 +6,7 @@ import { SegmentedSwitch } from '../primitives/SegmentedSwitch';
 import { Badge } from '../primitives/Badge';
 import { Card } from '../layout/Card';
 import { Sliders, Waves, Sparkles, Compass, Radio } from 'lucide-react';
-import { audioConfig, AUDIO_SETTINGS_CHANGED_EVENT } from '../../audio/AudioArchitecture.js';
+import { audioConfig } from '../tokens/audioConfigStore';
 
 export interface Layer3AudioDetailRecipeProps {
   isLight?: boolean;
@@ -52,8 +52,7 @@ export const Layer3AudioDetailRecipe: React.FC<Layer3AudioDetailRecipeProps> = (
       else if (s >= 0.013) setScalePreset('wide');
       else setScalePreset('standard');
     };
-    window.addEventListener(AUDIO_SETTINGS_CHANGED_EVENT, handleSync);
-    return () => window.removeEventListener(AUDIO_SETTINGS_CHANGED_EVENT, handleSync);
+    return audioConfig.subscribe(handleSync);
   }, []);
 
   const handlePanningModelChange = (model: string) => {

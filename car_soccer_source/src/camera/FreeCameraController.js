@@ -11,6 +11,7 @@
  */
 
 import { SimplePerspectiveCamera, SimpleVector3, resolveCameraClass, resolveVector3Class } from './CameraController.js';
+import { useUIStore } from '../ui-system/core/store.ts';
 
 export class FreeCameraController {
   /**
@@ -182,18 +183,14 @@ export class FreeCameraController {
       e.preventDefault();
       const newFov = Math.max(10, Math.min(140, this._fov - 5));
       this.fov = newFov;
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('car-soccer:freecam-fov-changed', { detail: { fov: newFov } }));
-      }
+      useUIStore.setState({ freeCamFov: newFov });
       return;
     }
     if (code === 'Equal' || e.key === '=' || e.key === '+') {
       e.preventDefault();
       const newFov = Math.max(10, Math.min(140, this._fov + 5));
       this.fov = newFov;
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('car-soccer:freecam-fov-changed', { detail: { fov: newFov } }));
-      }
+      useUIStore.setState({ freeCamFov: newFov });
       return;
     }
 

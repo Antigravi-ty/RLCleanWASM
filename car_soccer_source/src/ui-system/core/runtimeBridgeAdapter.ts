@@ -3,9 +3,11 @@ import { perfTelemetryStore } from '../tokens/perfTelemetryStore';
 import { hudStore } from '../hud/hudStore';
 import { floatingStore } from '../tokens/floatingStore';
 import { DEV_TEST_LAB_PRESET } from '../tokens/floatingPresets';
-import { loadInputBindings } from '../../input/InputBindings.js';
-import { applyVisualMaterialsConfig } from '../../effects/ThemeMaterialPipeline.js';
+import { loadInputBindings } from '../tokens/inputBindingsStore';
+import { getPreferredColorHex } from './configStorageHydrators';
 import { createOnlineBridgeHandlers } from './runtimeOnlineBridgeHandlers';
+import { determinismStore } from '../tokens/determinismStore';
+import { networkDiagnosticsStore } from '../tokens/networkDiagnosticsStore';
 
 export function syncMaterialsToGame(gameRuntime: any, materialsConfig?: any) {
   if (!gameRuntime) return;
@@ -29,7 +31,7 @@ export function syncMaterialsToGame(gameRuntime: any, materialsConfig?: any) {
       }
     }
   }
-  applyVisualMaterialsConfig(config);
+  gameRuntime.applyVisualMaterialsConfig?.(config);
   if (gameRuntime.arena?.markRenderTreeChanged) {
     gameRuntime.arena.markRenderTreeChanged();
   }
@@ -87,61 +89,10 @@ export function attachGameRuntimeBridge(gameRuntime: any) {
     useUIStore.setState({ matchMode: gameRuntime.match.state.mode });
   }
 
-  if (typeof window !== 'undefined') {
-    (window as any).__CAR_SOCCER_GAME_RUNTIME__ = gameRuntime;
-    window.addEventListener('car-soccer:freecam-fov-changed', (evt: any) => {
-      if (evt?.detail?.fov !== undefined) {
-        useUIStore.setState({ freeCamFov: evt.detail.fov });
-      }
-    });
-    window.addEventListener('car-soccer:boostpad-simulate-collect', (evt: any) => {
-      const sys = gameRuntime.arena?.boostPadSystem;
-      if (!sys) return;
-      const padIndex = evt?.detail?.padIndex;
-      if (padIndex === 'all') {
-        sys.simulateCollectAll?.();
-      } else if (typeof padIndex === 'number') {
-        sys.simulateCollect?.(padIndex);
-      }
-    });
-    window.addEventListener('car-soccer:boostpad-simulate-refill', (evt: any) => {
-      const sys = gameRuntime.arena?.boostPadSystem;
-      if (!sys) return;
-      const padIndex = evt?.detail?.padIndex;
-      const duration = evt?.detail?.duration;
-      if (padIndex === 'all') {
-        sys.simulateRefillAll?.(duration);
-      } else if (typeof padIndex === 'number') {
-        sys.simulateRefill?.(padIndex, duration);
-      }
-    });
-  }
-
   try {
-    if (typeof localStorage !== 'undefined') {
-      const rawColor = localStorage.getItem('car-soccer.color-preferences.v1');
-      const hexMap: Record<number, string> = {
-        0: '#ff7043', 1: '#66bb6a', 2: '#ffc107', 3: '#42a5f5', 4: '#fd6e9d', 5: '#ba68c8'
-      };
-      let targetHex: string | null = null;
-      if (rawColor) {
-        const parsed = JSON.parse(rawColor);
-        const slot = parsed.primaryTeam === 'orange' ? parsed.orangeOrder?.[0] : parsed.blueOrder?.[0];
-        if (slot !== undefined && hexMap[slot]) {
-          targetHex = hexMap[slot];
-        }
-      } else {
-        const legacySlot = localStorage.getItem('car-soccer:preferred-color');
-        if (legacySlot !== null && hexMap[Number(legacySlot)]) {
-          targetHex = hexMap[Number(legacySlot)];
-        }
-      }
-      if (!targetHex) {
-        targetHex = '#ffc107';
-      }
-      if (targetHex && typeof gameRuntime.setCarColor === 'function') {
-        gameRuntime.setCarColor(0, targetHex);
-      }
+    const targetHex = getPreferredColorHex();
+    if (targetHex && typeof gameRuntime.setCarColor === 'function') {
+      gameRuntime.setCarColor(0, targetHex);
     }
   } catch (err) {
     console.warn('[mountGameUI] Failed to sync initial car color:', err);
@@ -374,6 +325,38 @@ export function attachGameRuntimeBridge(gameRuntime: any) {
         gameRuntime.settingsSheet.bindings = bindings;
       }
       hudStore.getState().syncBindings(bindings);
+    },
+    onEnsureDeterminism: async () => {
+      if (!gameRuntime.determinismHarness && typeof gameRuntime.enableDeterminismHarness === 'function') {
+        await gameRuntime.enableDeterminismHarness(false);
+      }
+      if (gameRuntime.determinismHarness) {
+        determinismStore.setHarness(gameRuntime.determinismHarness);
+      }
+    },
+    onEnsureNetworkDiagnostics: async () => {
+      if (!gameRuntime.networkReconciler && typeof gameRuntime.enableNetworkPrediction === 'function') {
+        await gameRuntime.enableNetworkPrediction(false);
+      }
+      networkDiagnosticsStore.setSession(gameRuntime.networkReconciler, gameRuntime.networkChannel, gameRuntime);
+    },
+    onSimulateBoostPadCollect: (padIndex) => {
+      const sys = gameRuntime.arena?.boostPadSystem;
+      if (!sys) return;
+      if (padIndex === 'all') {
+        sys.simulateCollectAll?.();
+      } else if (typeof padIndex === 'number') {
+        sys.simulateCollect?.(padIndex);
+      }
+    },
+    onSimulateBoostPadRefill: (padIndex, duration) => {
+      const sys = gameRuntime.arena?.boostPadSystem;
+      if (!sys) return;
+      if (padIndex === 'all') {
+        sys.simulateRefillAll?.(duration);
+      } else if (typeof padIndex === 'number') {
+        sys.simulateRefill?.(padIndex, duration);
+      }
     }
   });
 

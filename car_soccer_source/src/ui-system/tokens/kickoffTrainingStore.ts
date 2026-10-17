@@ -1,4 +1,26 @@
 import { create } from 'zustand';
+import {
+  getInitialKickoffWsOffset,
+  saveKickoffWsOffset,
+} from '../core/configStorageHydrators';
+
+export interface KickoffSpawnMeta {
+  index: number;
+  key: string;
+  id: string;
+  label: string;
+  shortLabel: string;
+  x: number;
+  y: number;
+}
+
+export const KICKOFF_SPAWNS: KickoffSpawnMeta[] = [
+  { index: 0, key: '1', id: 'left-front',  label: '1 · Left Diagonal',  shortLabel: 'LF', x: -2048.0, y: -2560.0 },
+  { index: 1, key: '2', id: 'left-back',   label: '2 · Left Back',      shortLabel: 'LB', x: -256.0,  y: -3840.0 },
+  { index: 2, key: '3', id: 'center-back', label: '3 · Center Back',    shortLabel: 'CB', x: 0.0,     y: -4608.0 },
+  { index: 3, key: '4', id: 'right-back',  label: '4 · Right Back',     shortLabel: 'RB', x: 256.0,   y: -3840.0 },
+  { index: 4, key: '5', id: 'right-front', label: '5 · Right Diagonal', shortLabel: 'RF', x: 2048.0,  y: -2560.0 },
+];
 
 export type KickoffSubMode = 'instant' | 'easy-learning' | 'realistic';
 export type KickoffSpeedPreset = '100' | '50' | '25' | '75' | 'custom';
@@ -55,20 +77,7 @@ const EMPTY_KEYS: Record<KickoffOverlayKey, boolean> = {
 };
 
 function getInitialWsOffset(): number {
-  try {
-    if (typeof localStorage !== 'undefined') {
-      const raw = localStorage.getItem('car-soccer.kickoff-ws-offset-pct.v1');
-      if (raw !== null) {
-        const val = Number(raw);
-        if (Number.isFinite(val)) {
-          return Math.max(0, Math.min(50, Math.round(val)));
-        }
-      }
-    }
-  } catch {
-    // ignore storage errors
-  }
-  return 10;
+  return getInitialKickoffWsOffset();
 }
 
 export function resolvePhysicsRateFromPreset(preset: KickoffSpeedPreset, customTicks: number): number {
@@ -260,13 +269,7 @@ export const useKickoffTrainingStore = create<KickoffTrainingState>((set, get) =
 
   setWsVerticalOffsetPct: (pct) => {
     const clamped = Math.max(0, Math.min(50, Math.round(pct)));
-    try {
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem('car-soccer.kickoff-ws-offset-pct.v1', String(clamped));
-      }
-    } catch {
-      // ignore
-    }
+    saveKickoffWsOffset(clamped);
     set({ wsVerticalOffsetPct: clamped });
   },
 

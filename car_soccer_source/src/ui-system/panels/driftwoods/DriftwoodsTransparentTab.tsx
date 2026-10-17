@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ChevronDown, ChevronRight, ShieldAlert, Sparkles } from 'lucide-react';
-import type { DriftwoodsLayerConfig, DriftwoodsTunerConfig } from '../../../entities/stadium/driftwoods/DriftwoodsConfigurator';
+import type { DriftwoodsLayerConfig, DriftwoodsTunerConfig } from '../../core/driftwoodsConfig';
 import {
   TunerRow,
   TunerColorRow,
