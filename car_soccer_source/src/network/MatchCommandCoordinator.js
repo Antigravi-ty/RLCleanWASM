@@ -28,6 +28,14 @@ export function getExpectedAckPeerIds(admin) {
   return peers;
 }
 
+const ENTITY_SCOPED_SIGNALS = new Set([
+  MATCH_SIGNALS.PLAYER_JOINED,
+  MATCH_SIGNALS.PLAYER_LEFT,
+  MATCH_SIGNALS.PLAYER_SLOT_UPDATED,
+  MATCH_SIGNALS.PLAYER_LOADOUT_UPDATED,
+  MATCH_SIGNALS.DEMOLITION,
+]);
+
 export function dispatchMatchSignal(admin, signalType, frameId, param1 = 0, param2 = 0) {
   admin.nextSignalId = ((admin.nextSignalId || 0) % 65535) + 1;
   const isPersistentKickoff = signalType === MATCH_SIGNALS.KICKOFF_WILL_START;
@@ -58,7 +66,9 @@ export function dispatchMatchSignal(admin, signalType, frameId, param1 = 0, para
   }
   const mapKey = signalType === MATCH_SIGNALS.COMMAND_ACK
     ? `ack_${param1}_${param2}`
-    : signalType;
+    : ENTITY_SCOPED_SIGNALS.has(signalType)
+      ? `sig_${signalType}_ent_${param1}`
+      : signalType;
   admin.activeSignals.set(mapKey, signalObj);
   return signalObj;
 }
@@ -99,6 +109,13 @@ export function initiateMatchPrepare(admin, durationSeconds = null, timeoutTicks
   admin.matchSequence = ((admin.matchSequence || 0) + 1) & 0xFFFF;
   admin.state = MATCH_STATES.PREPARE;
   admin.prepareTimeoutTicks = timeoutTicks;
+
+  if (admin.physicsManager) {
+    admin.physicsManager.resetKickoff(0);
+    admin.applyRosterKickoffSpawns?.();
+    admin.physicsManager.setInputMask?.(true);
+    admin.matchTick = admin.physicsManager.currentTick;
+  }
 
   let allBotsOrHostReady = true;
   for (const [sid, p] of admin.players.entries()) {

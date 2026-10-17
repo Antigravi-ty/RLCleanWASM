@@ -186,7 +186,6 @@ export function stepMatchSessionFrame(admin) {
   }
 
   if (admin.state === MATCH_STATES.REPLAY) {
-    admin.matchTick++;
     admin.replayTicksRemaining--;
     let replayPhysicsSnapshot = null;
     if (Array.isArray(admin._activeReplayFrames) && admin._activeReplayCursor < admin._activeReplayFrames.length) {

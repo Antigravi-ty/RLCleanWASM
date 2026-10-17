@@ -53,6 +53,28 @@ export class PresentationStage {
         activeCarMesh.group.position.y += smoothOffset.y;
         activeCarMesh.group.position.z += smoothOffset.z;
       }
+
+      // Channel A: Lobby Dual-World Ghost Rendering (Host + remote peers up to 8 cars + remote ball, no ball trajectory line)
+      if (
+        r.networkReconciler.lobbyDualWorldMode &&
+        r.networkReconciler.lobbyCurrAuthoritativeState &&
+        r.multiWorldGhostRenderer
+      ) {
+        r.multiWorldGhostRenderer.setVisible(true);
+        r.multiWorldGhostRenderer.updateWorld(
+          'lobby-remote',
+          r.networkReconciler.lobbyPrevAuthoritativeState || r.networkReconciler.lobbyCurrAuthoritativeState,
+          r.networkReconciler.lobbyCurrAuthoritativeState,
+          r.interpolator?.alpha ?? 1.0,
+          dt,
+          {
+            paletteIndex: 0,
+            excludeCarIndices: [r.playerCarIndex],
+            getCarControls,
+            showBall: true
+          }
+        );
+      }
     }
 
     // Flip reset particle effects

@@ -46,6 +46,21 @@ export {
   buildRosterSnapshot
 };
 
+export function broadcastRosterUpdate(admin) {
+  if (!admin?.dataHandler || typeof admin.dataHandler.broadcast !== 'function') return;
+  try {
+    admin.dataHandler.broadcast(JSON.stringify({
+      type: 'roster_update',
+      roomId: admin.roomId,
+      gameMode: admin.gameMode,
+      state: admin.state,
+      roster: buildRosterSnapshot(admin)
+    }));
+  } catch (err) {
+    console.warn('[MatchRosterCoordinator] Failed to broadcast roster_update:', err);
+  }
+}
+
 export const MATCH_STATES = Object.freeze({
   LOBBY: 'lobby',
   PREPARE: 'prepare',
@@ -71,6 +86,37 @@ export const KICKOFF_SPAWN_PRESETS = Object.freeze([
 
 export function resolveDefaultColorSlotForTeam(team) {
   return team === 0 ? 3 : 0; // 3 = Sky Blue, 0 = Flame Red
+}
+
+export function applyRosterKickoffSpawns(admin) {
+  const sim = admin?.physicsManager?.sim;
+  if (!sim || typeof sim.setCarState !== 'function') return;
+
+  for (const p of admin.players.values()) {
+    if (typeof p.entityId !== 'number' || p.entityId < 0) continue;
+    const preset = KICKOFF_SPAWN_PRESETS[p.spawnSlot] || KICKOFF_SPAWN_PRESETS[0];
+    const presetCoord = p.team === 0 ? preset.team0 : preset.team1;
+    if (!presetCoord) continue;
+
+    const cy = Math.cos(presetCoord.yaw);
+    const sy = Math.sin(presetCoord.yaw);
+    const carState = new Float32Array(CAR_STATE_STRIDE);
+    carState[CAR_STATE_OFFSETS.POS] = presetCoord.x;
+    carState[CAR_STATE_OFFSETS.POS + 1] = presetCoord.y;
+    carState[CAR_STATE_OFFSETS.POS + 2] = presetCoord.z;
+    carState[CAR_STATE_OFFSETS.FWD] = cy;
+    carState[CAR_STATE_OFFSETS.FWD + 1] = sy;
+    carState[CAR_STATE_OFFSETS.FWD + 2] = 0;
+    carState[CAR_STATE_OFFSETS.RIGHT] = -sy;
+    carState[CAR_STATE_OFFSETS.RIGHT + 1] = cy;
+    carState[CAR_STATE_OFFSETS.RIGHT + 2] = 0;
+    carState[CAR_STATE_OFFSETS.UP] = 0;
+    carState[CAR_STATE_OFFSETS.UP + 1] = 0;
+    carState[CAR_STATE_OFFSETS.UP + 2] = 1;
+    carState[CAR_STATE_OFFSETS.BOOST] =
+      admin.state === MATCH_STATES.LOBBY || admin.isTrainingMode ? 100.0 : 33.33;
+    sim.setCarState(p.entityId, carState);
+  }
 }
 
 export function assignSessionPlayerSlot(
@@ -242,8 +288,9 @@ export function assignSessionPlayerSlot(
     assignedEntityId,
     packLoadoutSignalParam2(visualIndex, colorSlot, requestedHitboxIndex)
   );
+  broadcastRosterUpdate(admin);
 
-  if (admin.autoStartWhenFull && admin.players.size >= admin.maxPlayers && admin.state === MATCH_STATES.LOBBY) {
+  if (!admin._applyingBotFillPolicy && admin.autoStartWhenFull && admin.players.size >= admin.maxPlayers && admin.state === MATCH_STATES.LOBBY) {
     admin.initiateMatchPrepare?.();
   }
 
@@ -262,12 +309,14 @@ export function removeSessionPlayerSlot(admin, sessionId) {
     admin.dispatchSignal(MATCH_SIGNALS.PLAYER_LEFT, admin.matchTick, entityId, player.team ?? 0);
     admin.skipReplayVotes?.delete(sessionId);
     admin.rematchVotes?.delete(sessionId);
+    broadcastRosterUpdate(admin);
     return;
   }
   if (admin.spectators.has(sessionId)) {
     admin.spectators.delete(sessionId);
     admin.sessionManager?.unregisterSession(sessionId);
     admin.dispatchSignal(MATCH_SIGNALS.PLAYER_LEFT, admin.matchTick, -1, 2);
+    broadcastRosterUpdate(admin);
   }
 }
 
@@ -320,6 +369,7 @@ export function updatePlayerLoadout(admin, sessionId, visualIdOrPackedParam1, co
     player.entityId,
     packedLoadout
   );
+  broadcastRosterUpdate(admin);
 
   return player;
 }

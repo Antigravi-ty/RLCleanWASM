@@ -3,6 +3,7 @@ import { PredictionReconciler } from '../../network/PredictionReconciler.js';
 import { CLIENT_COMMAND_TYPES } from '../../network/GlobalPayloadCodec.js';
 import { packLoadoutCommandParam1 } from '../../network/MatchRosterCoordinator.js';
 import { LobbyGhostCarCoordinator, DEFAULT_GHOST_OPACITY } from '../../network/LobbyGhostCarCoordinator.js';
+import { MultiWorldGhostRenderer } from '../modes/MultiWorldGhostRenderer.js';
 import {
   sampleDiagnosticFleetTelemetry as sampleDiagnosticsFleetTelemetry,
   DEFAULT_DIAGNOSTIC_FLEET
@@ -41,12 +42,34 @@ export class RuntimeNetworkManager {
     this.lobbyGhostCoordinator = new LobbyGhostCarCoordinator();
   }
 
+  ensureMultiWorldGhostRenderer() {
+    const r = this.runtime;
+    if (!r.multiWorldGhostRenderer && r.arena) {
+      r.multiWorldGhostRenderer = new MultiWorldGhostRenderer(r.arena);
+    }
+    return r.multiWorldGhostRenderer;
+  }
+
   _bindReconcilerSignals(reconciler) {
     bindReconcilerSignals(this.runtime, reconciler);
   }
 
   setLobbyGhostMode(enabled = true, optionsOrInteractWithBall = {}) {
-    return configureRuntimeLobbyGhostMode(this.runtime, this.lobbyGhostCoordinator, enabled, optionsOrInteractWithBall);
+    const r = this.runtime;
+    const cfg = configureRuntimeLobbyGhostMode(r, this.lobbyGhostCoordinator, enabled, optionsOrInteractWithBall);
+    const ghostRenderer = this.ensureMultiWorldGhostRenderer();
+    if (ghostRenderer) {
+      ghostRenderer.setVisible(Boolean(enabled));
+    }
+    if (!enabled && r.arena?.cars) {
+      const numCars = Math.min(r.physics?.numCars || 1, r.arena.cars.length);
+      for (let i = 0; i < numCars; i++) {
+        if (r.arena.cars[i]) {
+          r.arena.cars[i].visible = true;
+        }
+      }
+    }
+    return cfg;
   }
 
   setCarGhostCollision(carIndex, interactWithBall = false, interactWithCars = false, opacity = DEFAULT_GHOST_OPACITY) {
@@ -109,6 +132,9 @@ export class RuntimeNetworkManager {
     r.remotePeerCarMap?.clear?.();
     resetRuntimeReconcilerSignalState(r);
     this.setLobbyGhostMode(false);
+    if (r.multiWorldGhostRenderer) {
+      r.multiWorldGhostRenderer.setVisible(false);
+    }
     if (r.authoritativeServer) {
       try {
         r.authoritativeServer.destroy?.();
@@ -213,6 +239,7 @@ export class RuntimeNetworkManager {
       botFillMode,
       durationSeconds,
       lobbyMode: isMatchLobby,
+      skipReplayByDefault: options.skipReplayByDefault !== undefined ? Boolean(options.skipReplayByDefault) : false,
       roomId: options.roomId || 'local_room'
     });
     await r.authoritativeServer.init();
@@ -261,6 +288,11 @@ export class RuntimeNetworkManager {
     r.networkReconciler.onHardResync = () => {
       if (r.interpolator) {
         r.interpolator.sync(performance.now());
+      }
+    };
+    r.networkReconciler.onRosterUpdate = async (msg) => {
+      if (msg?.roster) {
+        await this._applyRosterSnapshot(msg.roster);
       }
     };
     r.networkReconciler.syncTimeline(serverSnap, serverTick);
@@ -339,6 +371,11 @@ export class RuntimeNetworkManager {
         r.interpolator.sync(performance.now());
       }
     };
+    r.networkReconciler.onRosterUpdate = async (msg) => {
+      if (msg?.roster) {
+        await this._applyRosterSnapshot(msg.roster);
+      }
+    };
 
     r.networkReconciler.onHandshakeResponse = async (msg) => {
       if (typeof msg.entityId === 'number' && msg.entityId >= 0) {
@@ -347,11 +384,44 @@ export class RuntimeNetworkManager {
       }
       if (msg.state === 'lobby') {
         r.physics?.setUnlimitedBoost?.(true);
+        if (r.arena) {
+          r.arena.isLobbyMode = true;
+        }
+        r.networkReconciler.setLobbyDualWorldMode?.(true);
+        // Enable Dual-World Ghost Renderer for remote Host & peers; keep local car + local ball solid
+        const ghostRenderer = this.ensureMultiWorldGhostRenderer();
+        if (ghostRenderer) {
+          ghostRenderer.ensureWorld('lobby-remote', {
+            paletteIndex: 0,
+            opacity: 0.55,
+            showCar: true,
+            showBall: true
+          });
+          ghostRenderer.setVisible(true);
+        }
+        // Ensure local car interacts with local ball freely without colliding with remote cars
+        const numCars = Math.min(r.physics?.numCars || 2, 8);
+        for (let c = 0; c < numCars; c++) {
+          const isLocal = c === r.playerCarIndex;
+          r.physics?.setCarCollisionMask?.(c, isLocal, false);
+        }
       } else if (msg.state === 'kickoff' || msg.state === 'playing' || msg.state === 'prepare') {
         r.physics?.setUnlimitedBoost?.(false);
+        if (r.arena) {
+          r.arena.isLobbyMode = false;
+        }
+        r.networkReconciler.setLobbyDualWorldMode?.(false);
+        this.setLobbyGhostMode(false);
       }
       if (msg.roster) {
         await this._applyRosterSnapshot(msg.roster);
+      }
+      if (useUIStore && typeof useUIStore.getState === 'function') {
+        useUIStore.getState().setOnlineSession({
+          roomId: msg.roomId || useUIStore.getState().onlineSession?.roomId || 'online_room',
+          gameMode: msg.gameMode || useUIStore.getState().onlineSession?.gameMode || '1v1',
+          roomType: msg.state === 'lobby' || msg.state === 'prepare' || msg.state === 'kickoff' || msg.state === 'playing' ? 'match' : 'warmup'
+        });
       }
       const targetCar = r.arena?.cars?.[r.playerCarIndex];
       if (targetCar) {

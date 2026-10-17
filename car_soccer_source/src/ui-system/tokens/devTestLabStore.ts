@@ -43,9 +43,11 @@ export interface DevTestLabState {
   probeRollDir: number;
   probeCameraTarget: 'player' | 'boost_probe' | 'qe_probe';
 
-  // Bench 2: Dual-World Same-Map Ghost Sandbox
+  // Bench 2: Dual/Multi-World Same-Map Ghost Sandbox
   dualWorldEnabled: boolean;
-  activeWorldIndex: 0 | 1;
+  activeWorldIndex: number; // 0 = Local Primary World, 1..N = Ghost Worlds
+  ghostWorldCount: 2 | 3 | 4; // Total worlds (1 Primary + (N-1) Ghost Worlds)
+  ghostCarsPerWorld: number; // 1..8 cars per world
   ghostOpacity: number;
   syncOtherWorldBall: boolean;
 
@@ -86,7 +88,9 @@ export interface DevTestLabState {
   setProbeCameraTarget: (target: 'player' | 'boost_probe' | 'qe_probe') => void;
   setDualWorldEnabled: (enabled: boolean) => void;
   switchActiveWorld: () => void;
-  setActiveWorldIndex: (idx: 0 | 1) => void;
+  setActiveWorldIndex: (idx: number) => void;
+  setGhostWorldCount: (count: 2 | 3 | 4) => void;
+  setGhostCarsPerWorld: (carsCount: number) => void;
   setGhostOpacity: (opacity: number) => void;
   setTasFlowPreset: (preset: TasFlowPreset) => void;
   setTasCustomFlowPct: (pct: number) => void;
@@ -103,7 +107,7 @@ export interface DevTestLabState {
     onProbesConfigChange?: () => void;
     onProbeCameraChange?: (target: 'player' | 'boost_probe' | 'qe_probe') => void;
     onDualWorldConfigChange?: () => void;
-    onSwitchWorld?: (idx: 0 | 1) => void;
+    onSwitchWorld?: (idx: number) => void;
     onTasStartRecording?: () => void;
     onTasStopRecording?: () => void;
     onTasPushBackwardStart?: () => void;
@@ -139,6 +143,8 @@ export const useDevTestLabStore = create<DevTestLabState>((set, get) => ({
 
   dualWorldEnabled: false,
   activeWorldIndex: 0,
+  ghostWorldCount: 2,
+  ghostCarsPerWorld: 1,
   ghostOpacity: 0.45,
   syncOtherWorldBall: true,
 
@@ -211,7 +217,8 @@ export const useDevTestLabStore = create<DevTestLabState>((set, get) => ({
   },
 
   switchActiveWorld: () => {
-    const next: 0 | 1 = get().activeWorldIndex === 0 ? 1 : 0;
+    const count = get().ghostWorldCount || 2;
+    const next = (get().activeWorldIndex + 1) % count;
     set({ activeWorldIndex: next });
     get().runtimeHandlers.onSwitchWorld?.(next);
   },
@@ -219,6 +226,19 @@ export const useDevTestLabStore = create<DevTestLabState>((set, get) => ({
   setActiveWorldIndex: (activeWorldIndex) => {
     set({ activeWorldIndex });
     get().runtimeHandlers.onSwitchWorld?.(activeWorldIndex);
+  },
+
+  setGhostWorldCount: (ghostWorldCount) => {
+    const clampedCount = (ghostWorldCount === 3 || ghostWorldCount === 4) ? ghostWorldCount : 2;
+    const nextActive = get().activeWorldIndex >= clampedCount ? 0 : get().activeWorldIndex;
+    set({ ghostWorldCount: clampedCount, activeWorldIndex: nextActive });
+    get().runtimeHandlers.onDualWorldConfigChange?.();
+  },
+
+  setGhostCarsPerWorld: (carsCount) => {
+    const clampedCars = Math.max(1, Math.min(8, Math.round(carsCount)));
+    set({ ghostCarsPerWorld: clampedCars });
+    get().runtimeHandlers.onDualWorldConfigChange?.();
   },
 
   setGhostOpacity: (ghostOpacity) => {

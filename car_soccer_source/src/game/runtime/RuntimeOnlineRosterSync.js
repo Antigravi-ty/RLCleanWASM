@@ -15,13 +15,31 @@ export async function applyRuntimeRosterSnapshot(runtime, roster) {
   const r = runtime;
   if (!roster || !Array.isArray(roster.players)) return;
 
+  const isLobbyDualWorld = Boolean(
+    r.arena?.isLobbyMode ||
+    r.networkReconciler?.lobbyDualWorldMode ||
+    r.networkManager?.lobbyGhostCoordinator?.lobbyModeActive
+  );
+
   await r.arena?.ensureOpponent?.();
+  const connectedPeers = [];
+
   for (const p of roster.players) {
     const cIdx = p.entityId;
     if (typeof cIdx !== 'number' || cIdx < 0 || cIdx >= 8) continue;
     const preset = p.visualId || 'octane';
     const hitbox = p.hitboxId || preset;
     const team = p.team ?? (cIdx % 2);
+
+    if (cIdx !== r.playerCarIndex) {
+      connectedPeers.push({
+        id: p.sessionId || `peer_${cIdx}`,
+        name: p.name || `Player ${cIdx + 1}`,
+        carIndex: cIdx,
+        pingMs: Math.round(r.networkReconciler?.metrics?.rttMs || 15),
+        isReady: Boolean(p.ready)
+      });
+    }
 
     r.networkReconciler?.setCarVisualPreset?.(cIdx, preset);
 
@@ -38,7 +56,9 @@ export async function applyRuntimeRosterSnapshot(runtime, roster) {
         }
       }
       if (r.arena.cars[cIdx]) {
-        r.arena.cars[cIdx].visible = true;
+        // In Lobby Dual-World, only the local player's solid car is visible in r.arena.cars;
+        // remote cars are rendered by MultiWorldGhostRenderer
+        r.arena.cars[cIdx].visible = isLobbyDualWorld ? (cIdx === r.playerCarIndex) : true;
       }
     }
 
@@ -57,6 +77,10 @@ export async function applyRuntimeRosterSnapshot(runtime, roster) {
     } else {
       r.arena?.setCarTeam?.(cIdx, team);
     }
+  }
+
+  if (useUIStore && typeof useUIStore.getState === 'function') {
+    useUIStore.getState().setOnlineSession({ connectedPeers });
   }
 }
 
@@ -90,6 +114,8 @@ export async function onRuntimeRemotePlayerConnected(runtime, channel, remotePla
     const team = targetCarIndex % 2;
     const peerVisualId = channel?.visualId || 'octane';
     const peerColorSlot = channel?.colorSlot ?? 0;
+    // Note: addClientChannel -> registerChannel already assigns the session slot on the worker/server,
+    // or the client's 'join' packet will assign it with exact preferredTeam/loadout.
     r.authoritativeServer.ensureCar(targetCarIndex, team, peerVisualId);
     r.authoritativeServer.notifyPlayerJoined(targetCarIndex, remotePlayerName, 'player', channelId, peerVisualId, peerColorSlot);
 
@@ -105,6 +131,7 @@ export async function onRuntimeRemotePlayerConnected(runtime, channel, remotePla
       }
     }
     const isLobby = Boolean(
+      r.arena?.isLobbyMode ||
       r.networkManager?.lobbyGhostCoordinator?.lobbyModeActive ||
       r.match?.state?.mode !== 'match' ||
       r.match?.state?.phase === 'lobby'

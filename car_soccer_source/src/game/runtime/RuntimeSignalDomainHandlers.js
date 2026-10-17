@@ -21,6 +21,11 @@ export function handleRuntimeRosterSignal(runtime, reconciler, sig) {
     case MATCH_SIGNALS.PLAYER_SLOT_UPDATED: {
       const carIdx = sig.param1;
       const team = sig.param2 & 0xFF;
+      const isLobbyDualWorld = Boolean(
+        r.arena?.isLobbyMode ||
+        reconciler?.lobbyDualWorldMode ||
+        r.networkManager?.lobbyGhostCoordinator?.lobbyModeActive
+      );
       if (typeof carIdx === 'number' && carIdx >= 0 && carIdx < 8) {
         const preset = reconciler.carVisualPresets?.get(carIdx) || 'game-car';
         while (r.physics && r.physics.numCars <= carIdx) {
@@ -37,7 +42,7 @@ export function handleRuntimeRosterSignal(runtime, reconciler, sig) {
           }
           r.arena.setCarTeam?.(carIdx, team);
           if (r.arena.cars[carIdx]) {
-            r.arena.cars[carIdx].visible = true;
+            r.arena.cars[carIdx].visible = isLobbyDualWorld ? (carIdx === r.playerCarIndex) : true;
           }
         }
         if (preset) {

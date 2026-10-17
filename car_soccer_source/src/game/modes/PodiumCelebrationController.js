@@ -145,7 +145,7 @@ export class PodiumCelebrationController {
 
       if (r.networkReconciler) {
         r.networkReconciler.sendOutboundInputForTick?.(
-          Math.floor(r.physics.getHeaderView().tickCount) + this.podiumTick,
+          Math.floor(r.physics.getHeaderView().tickCount),
           r.playerCarIndex,
           playerControls
         );
@@ -161,16 +161,19 @@ export class PodiumCelebrationController {
         }
       }
 
-      if (r.interpolator) {
-        r.interpolator.prevState.set(r.interpolator.currState);
-      }
-      r.physics.step(1);
-      if (r.interpolator) {
-        r.interpolator.currState.set(r.physics.state);
+      // Only step local physics directly when NOT driven by an active networkReconciler
+      if (!r.networkReconciler) {
+        if (r.interpolator) {
+          r.interpolator.prevState.set(r.interpolator.currState);
+        }
+        r.physics.step(1);
+        if (r.interpolator) {
+          r.interpolator.currState.set(r.physics.state);
+        }
       }
     }
 
-    if (r.interpolator) {
+    if (r.interpolator && !r.networkReconciler) {
       r.interpolator.alpha = Math.min(1.0, this.accumulator / FIXED_TIMESTEP);
     }
   }

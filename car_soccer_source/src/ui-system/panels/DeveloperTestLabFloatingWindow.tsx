@@ -50,6 +50,8 @@ export const DeveloperTestLabFloatingWindow: React.FC<DeveloperTestLabFloatingWi
     probeCameraTarget,
     dualWorldEnabled,
     activeWorldIndex,
+    ghostWorldCount,
+    ghostCarsPerWorld,
     ghostOpacity,
     tasState,
     tasRecordedFrames,
@@ -62,6 +64,8 @@ export const DeveloperTestLabFloatingWindow: React.FC<DeveloperTestLabFloatingWi
     setProbeCameraTarget,
     setDualWorldEnabled,
     switchActiveWorld,
+    setGhostWorldCount,
+    setGhostCarsPerWorld,
     setGhostOpacity,
     setTasFlowPreset,
     setTasCustomFlowPct,
@@ -84,8 +88,8 @@ export const DeveloperTestLabFloatingWindow: React.FC<DeveloperTestLabFloatingWi
 
   const tabs: TabItem[] = [
     { id: 'probes', label: '1. Probes', icon: <Radio className="h-3.5 w-3.5" /> },
-    { id: 'dual-world', label: '2. Dual Ghost', icon: <Layers className="h-3.5 w-3.5" /> },
-    { id: 'tas-replay', label: '3. State Replay', icon: <History className="h-3.5 w-3.5" /> },
+    { id: 'dual-world', label: '2. Multi Ghost', icon: <Layers className="h-3.5 w-3.5" /> },
+    { id: 'state-replay', label: '3. State Replay', icon: <History className="h-3.5 w-3.5" /> },
     { id: 'incident-match', label: '4. 90s Match', icon: <Zap className="h-3.5 w-3.5" /> },
   ];
 
@@ -246,7 +250,7 @@ export const DeveloperTestLabFloatingWindow: React.FC<DeveloperTestLabFloatingWi
       )}
 
       {/* ================================================================= */}
-      {/* BENCH 2: Dual-World Same-Map Ghost Car Sandbox                    */}
+      {/* BENCH 2: Multi-World Same-Map Ghost Car Sandbox (2..4 Worlds)     */}
       {/* ================================================================= */}
       {activeTab === 'dual-world' && (
         <div className="flex flex-col gap-2.5">
@@ -254,7 +258,7 @@ export const DeveloperTestLabFloatingWindow: React.FC<DeveloperTestLabFloatingWi
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
                 <Layers className="h-3.5 w-3.5 text-sky-400" />
-                <span className="font-semibold text-[11px]">Dual-World Same-Map Ghost Sandbox</span>
+                <span className="font-semibold text-[11px]">Multi-World Same-Map Ghost Sandbox</span>
               </div>
               <ToggleSwitch
                 checked={dualWorldEnabled}
@@ -265,17 +269,52 @@ export const DeveloperTestLabFloatingWindow: React.FC<DeveloperTestLabFloatingWi
             </div>
 
             <p className={`text-[10px] leading-relaxed ${mutedText}`}>
-              Runs two independent physics worlds (<b>World A: Blue Car</b> & <b>World B: Orange Car</b>) on the exact same map.
-              Switch control between vehicles at any time; the non-controlled vehicle & ball are rendered as a translucent ghost with zero physical collision interference.
+              Runs up to <b>{ghostWorldCount} independent physics worlds</b> on the same map, with up to <b>8 vehicles + 1 ball per world</b> (no ball trajectory prediction line).
+              Cycle control across worlds at any time; non-controlled worlds render as translucent ghosts with zero physical collision interference.
             </p>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="flex flex-col gap-1">
+                <span className="font-semibold text-[10px]">Parallel Worlds</span>
+                <SegmentedSwitch
+                  value={String(ghostWorldCount)}
+                  fullWidth
+                  size="sm"
+                  isLight={isLight}
+                  onValueChange={(v) => setGhostWorldCount(Number(v) as 2 | 3 | 4)}
+                  options={[
+                    { value: '2', label: '2 Worlds' },
+                    { value: '3', label: '3 Worlds' },
+                    { value: '4', label: '4 Worlds' },
+                  ]}
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <span className="font-semibold text-[10px]">Cars Per World (Max 8)</span>
+                <SegmentedSwitch
+                  value={String(ghostCarsPerWorld)}
+                  fullWidth
+                  size="sm"
+                  isLight={isLight}
+                  onValueChange={(v) => setGhostCarsPerWorld(Number(v))}
+                  options={[
+                    { value: '1', label: '1' },
+                    { value: '2', label: '2' },
+                    { value: '4', label: '4' },
+                    { value: '8', label: '8' },
+                  ]}
+                />
+              </div>
+            </div>
 
             <div className="flex items-center justify-between gap-2 pt-1">
               <div className="flex flex-col">
                 <span className="font-bold text-xs">
-                  Controlling: {activeWorldIndex === 0 ? 'World A (Blue Car)' : 'World B (Orange Ghost World)'}
+                  Controlling: World #{activeWorldIndex + 1} of {ghostWorldCount} ({ghostCarsPerWorld} {ghostCarsPerWorld === 1 ? 'Car' : 'Cars'}/World)
                 </span>
                 <span className={`text-[10px] ${mutedText}`}>
-                  Other world renders as translucent ghost ({Math.round(ghostOpacity * 100)}% opacity)
+                  Other {ghostWorldCount - 1} world(s) render as translucent ghosts ({Math.round(ghostOpacity * 100)}% opacity)
                 </span>
               </div>
 
@@ -287,14 +326,14 @@ export const DeveloperTestLabFloatingWindow: React.FC<DeveloperTestLabFloatingWi
                 className="gap-1.5 px-3 py-1.5 text-xs font-bold shrink-0"
               >
                 <ArrowLeftRight className="h-3.5 w-3.5" />
-                <span>Switch Vehicle</span>
+                <span>Switch World</span>
               </Button>
             </div>
 
             <div className={`p-2.5 rounded-lg border ${subPanelBg}`}>
               <SliderControl
-                label={`Ghost Car Opacity (${Math.round(ghostOpacity * 100)}%)`}
-                description="Fixed translucency for the opposite world's ghost car"
+                label={`Ghost World Opacity (${Math.round(ghostOpacity * 100)}%)`}
+                description="Translucency for all parallel ghost worlds (Cars 0..7 + Ball)"
                 value={Math.round(ghostOpacity * 100)}
                 min={15}
                 max={90}

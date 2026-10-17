@@ -44,6 +44,7 @@ export class PhysicsEngineManager {
     this.goalLatched = false;
     this.goalScoredAtTick = -1;
     this.frozenBallSnapshot = null;
+    this.isRecordingFullReplay = Boolean(options.isRecordingFullReplay ?? false);
 
     this.lastAcknowledgedControls = new Map();
     if (this.sim?.isInitialized && typeof this.sim.initReplayBuffer === 'function') {
@@ -230,6 +231,7 @@ export class PhysicsEngineManager {
       case MATCH_SIGNALS.MATCH_STARTED:
       case MATCH_SIGNALS.KICKOFF_WILL_START:
         this.resetGoalLatch();
+        this.isRecordingFullReplay = true;
         releasePodiumLocksOnEngine(this.sim);
         if (this.lobbyGhostCoordinator.lobbyModeActive) {
           this.restoreSolidCollisions();
@@ -247,6 +249,7 @@ export class PhysicsEngineManager {
       case 'KICKOFF_RESET':
       case MATCH_SIGNALS.KICKOFF_START:
         this.resetGoalLatch();
+        this.isRecordingFullReplay = true;
         releasePodiumLocksOnEngine(this.sim);
         if (this.lobbyGhostCoordinator.lobbyModeActive) {
           this.restoreSolidCollisions();
@@ -261,6 +264,7 @@ export class PhysicsEngineManager {
 
       case MATCH_SIGNALS.PODIUM_START:
         this.isPaused = false;
+        this.isRecordingFullReplay = false;
         this.setInputMask(false);
         applyPodiumFormationToEngine(this.sim, data.winner ?? data.param1 ?? 0);
         this.sim?.pushSignalEvent?.(MATCH_SIGNALS.PODIUM_START, this.currentTick);
@@ -273,12 +277,14 @@ export class PhysicsEngineManager {
 
       case MATCH_SIGNALS.GOAL_REPLAY_START:
         this.resetGoalLatch();
+        this.isRecordingFullReplay = false;
         this.sim?.pushSignalEvent?.(MATCH_SIGNALS.GOAL_REPLAY_START, this.currentTick);
         this.sim?.setSimulationFrozen?.(true, 0, true);
         break;
 
       case MATCH_SIGNALS.GOAL_REPLAY_END:
         this.resetGoalLatch();
+        this.isRecordingFullReplay = true;
         this.sim?.setSimulationFrozen?.(false, 0, false);
         this.sim?.pushSignalEvent?.(MATCH_SIGNALS.GOAL_REPLAY_END, this.currentTick);
         break;
@@ -388,7 +394,9 @@ export class PhysicsEngineManager {
 
     if (!this.isPaused) {
       this.sim.step(1);
-      this.sim.recordReplayFrame?.();
+      if (this.isRecordingFullReplay) {
+        this.sim.recordReplayFrame?.();
+      }
       const newTickAfterStep = this.currentTick;
 
       if (!this.goalLatched) {

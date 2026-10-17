@@ -78,6 +78,12 @@ export class PredictionReconciler {
     this.kickoffMaskUntilTick = -1;
     this.carVisualPresets = new Map();
 
+    // Channel A (Lobby Dual-World) & Channel C (Goal Replay Playback) isolation flags
+    this.lobbyDualWorldMode = Boolean(options.lobbyDualWorldMode);
+    this.replayPlaybackMode = false;
+    this.lobbyPrevAuthoritativeState = null;
+    this.lobbyCurrAuthoritativeState = null;
+
     this.metrics = {
       clientTick: 0,
       serverTick: 0,
@@ -91,6 +97,31 @@ export class PredictionReconciler {
 
     this.onMetricsUpdated = null;
     this._metricsListeners = new Set();
+  }
+
+  setLobbyDualWorldMode(enabled) {
+    const next = Boolean(enabled);
+    if (this.lobbyDualWorldMode && !next) {
+      this.resetTimelineState();
+    }
+    this.lobbyDualWorldMode = next;
+  }
+
+  setReplayPlaybackMode(enabled) {
+    const next = Boolean(enabled);
+    if (this.replayPlaybackMode && !next) {
+      this.resetTimelineState();
+    }
+    this.replayPlaybackMode = next;
+  }
+
+  resetTimelineState() {
+    this.isTimelineSynchronized = false;
+    this.lastAckedServerTick = -1;
+    this.lastHardResyncTime = 0;
+    this.inputHistory = new Array(this.capacity);
+    this.clientInputRingBuffer?.clear?.();
+    this.visualSmoothingOffset = { x: 0, y: 0, z: 0 };
   }
 
   _resolveEffectiveRtt() {
@@ -314,18 +345,12 @@ export class PredictionReconciler {
     if (!packet) return;
 
     const serverTick = packet.serverTick;
-    if (serverTick <= this.lastAckedServerTick && serverTick > 0) return;
+    // Allow non-increasing ticks during Replay Playback or after a timeline reset
+    if (!this.replayPlaybackMode && serverTick <= this.lastAckedServerTick && serverTick > 0) return;
     this.lastAckedServerTick = serverTick;
     this.metrics.serverTick = serverTick;
     this.metrics.rttMs = this.channel?.rttMs ?? 0;
     this.metrics.leadTicks = this.leadTicks;
-
-    const serverCarCount = packet.acknowledgedControls?.length || 1;
-    while (this.sim.numCars < serverCarCount) {
-      const nextCarIdx = this.sim.numCars;
-      const preset = this.carVisualPresets.get(nextCarIdx) || 'octane';
-      this.sim.addCar(nextCarIdx % 2, preset);
-    }
 
     if (packet.acknowledgedControls && Array.isArray(packet.acknowledgedControls)) {
       for (const item of packet.acknowledgedControls) {
@@ -346,6 +371,35 @@ export class PredictionReconciler {
         this._onNextDumpResolve(dumped);
         this._onNextDumpResolve = null;
       }
+    }
+
+    // Channel A: Lobby Dual-World Mode -> Capture authoritative snapshot for Ghost World rendering without rolling back local physics
+    if (this.lobbyDualWorldMode) {
+      if (packet.stateSnapshot && packet.stateSnapshot.length >= 410) {
+        if (!this.lobbyCurrAuthoritativeState || this.lobbyCurrAuthoritativeState.length !== packet.stateSnapshot.length) {
+          this.lobbyPrevAuthoritativeState = new Float32Array(packet.stateSnapshot);
+          this.lobbyCurrAuthoritativeState = new Float32Array(packet.stateSnapshot);
+        } else {
+          this.lobbyPrevAuthoritativeState.set(this.lobbyCurrAuthoritativeState);
+          this.lobbyCurrAuthoritativeState.set(packet.stateSnapshot);
+        }
+      }
+      this.metrics.clientTick = Math.floor(this.sim.getHeaderView().tickCount);
+      this.notifyMetricsUpdated();
+      return;
+    }
+
+    // Channel C: Goal Replay Playback Mode -> Pure render playback without predictive rollback
+    if (this.replayPlaybackMode) {
+      this.notifyMetricsUpdated();
+      return;
+    }
+
+    const serverCarCount = packet.acknowledgedControls?.length || 1;
+    while (this.sim.numCars < serverCarCount) {
+      const nextCarIdx = this.sim.numCars;
+      const preset = this.carVisualPresets.get(nextCarIdx) || 'octane';
+      this.sim.addCar(nextCarIdx % 2, preset);
     }
 
     const effectiveRtt = this._resolveEffectiveRtt();

@@ -1,7 +1,7 @@
 import { MATCH_SIGNALS } from './GlobalPayloadCodec.js';
 import { formatMatchTime } from '../utils/AssetResponseValidator.js';
 import {
-  MATCH_STATES, KICKOFF_SPAWN_PRESETS, assignSessionPlayerSlot, removeSessionPlayerSlot,
+  MATCH_STATES, KICKOFF_SPAWN_PRESETS, applyRosterKickoffSpawns, assignSessionPlayerSlot, removeSessionPlayerSlot,
   updatePlayerLoadout, switchPlayerRoleOrTeam, collectSessionUserRtt, evaluateControlPacket,
   encodeVisualIdIndex, decodeVisualIdIndex, encodeHitboxIdIndex, decodeHitboxIdIndex,
   packLoadoutSignalParam2, unpackLoadoutSignalParam2, packLoadoutCommandParam1, unpackLoadoutCommandParam1
@@ -160,65 +160,71 @@ export class MatchSessionAdmin {
   }
 
   applyBotFillPolicy() {
-    const maxPerTeam = Math.max(1, Math.floor(this.maxPlayers / 2));
-    if (this.botFillMode === 'no_bots') {
+    if (this._applyingBotFillPolicy) return;
+    this._applyingBotFillPolicy = true;
+    try {
+      const maxPerTeam = Math.max(1, Math.floor(this.maxPlayers / 2));
+      if (this.botFillMode === 'no_bots') {
+        for (const [sid, p] of Array.from(this.players.entries())) {
+          if (p.isBot && sid !== 'bot') {
+            this.removePlayerSession(sid);
+          }
+        }
+        return;
+      }
+
+      if (this.botFillMode === 'custom') {
+        return;
+      }
+
+      // Remove previously auto-filled bots before recomputing team balance
       for (const [sid, p] of Array.from(this.players.entries())) {
-        if (p.isBot && sid !== 'bot') {
+        if (p.isBot && String(sid).startsWith('bot_fill_')) {
           this.removePlayerSession(sid);
         }
       }
-      return;
-    }
 
-    if (this.botFillMode === 'custom') {
-      return;
-    }
-
-    // Remove previously auto-filled bots before recomputing team balance
-    for (const [sid, p] of Array.from(this.players.entries())) {
-      if (p.isBot && String(sid).startsWith('bot_fill_')) {
-        this.removePlayerSession(sid);
+      if (this.botFillMode === 'bots_vs_humans') {
+        // Place all humans on Team 0 (Blue) up to maxPerTeam, and fill Team 1 (Orange) with Bots
+        for (const [sid, p] of Array.from(this.players.entries())) {
+          if (!p.isBot && p.team !== 0) {
+            this.switchPlayerRoleOrTeam(sid, 'player', 0);
+          }
+        }
+        let orangeCount = 0;
+        for (const p of this.players.values()) {
+          if (p.team === 1) orangeCount++;
+        }
+        let fillSeq = 1;
+        while (orangeCount < maxPerTeam && this.players.size < this.maxPlayers) {
+          const sid = `bot_fill_${fillSeq++}`;
+          this.assignPlayerSlot(sid, `Bot ${fillSeq - 1}`, 'player', 1, 'octane');
+          orangeCount++;
+        }
+        return;
       }
-    }
 
-    if (this.botFillMode === 'bots_vs_humans') {
-      // Place all humans on Team 0 (Blue) up to maxPerTeam, and fill Team 1 (Orange) with Bots
-      for (const [sid, p] of Array.from(this.players.entries())) {
-        if (!p.isBot && p.team !== 0) {
-          this.switchPlayerRoleOrTeam(sid, 'player', 0);
+      if (this.botFillMode === 'auto_fill') {
+        let blueCount = 0;
+        let orangeCount = 0;
+        for (const p of this.players.values()) {
+          if (p.team === 0) blueCount++;
+          else if (p.team === 1) orangeCount++;
+        }
+        let fillSeq = 1;
+        while (blueCount < maxPerTeam && this.players.size < this.maxPlayers) {
+          const sid = `bot_fill_${fillSeq++}`;
+          this.assignPlayerSlot(sid, `Bot ${fillSeq - 1}`, 'player', 0, 'octane');
+          blueCount++;
+        }
+        while (orangeCount < maxPerTeam && this.players.size < this.maxPlayers) {
+          const sid = `bot_fill_${fillSeq++}`;
+          this.assignPlayerSlot(sid, `Bot ${fillSeq - 1}`, 'player', 1, 'octane');
+          orangeCount++;
         }
       }
-      let orangeCount = 0;
-      for (const p of this.players.values()) {
-        if (p.team === 1) orangeCount++;
-      }
-      let fillSeq = 1;
-      while (orangeCount < maxPerTeam && this.players.size < this.maxPlayers) {
-        const sid = `bot_fill_${fillSeq++}`;
-        this.assignPlayerSlot(sid, `Bot ${fillSeq - 1}`, 'player', 1, 'octane');
-        orangeCount++;
-      }
-      return;
-    }
-
-    if (this.botFillMode === 'auto_fill') {
-      let blueCount = 0;
-      let orangeCount = 0;
-      for (const p of this.players.values()) {
-        if (p.team === 0) blueCount++;
-        else if (p.team === 1) orangeCount++;
-      }
-      let fillSeq = 1;
-      while (blueCount < maxPerTeam && this.players.size < this.maxPlayers) {
-        const sid = `bot_fill_${fillSeq++}`;
-        this.assignPlayerSlot(sid, `Bot ${fillSeq - 1}`, 'player', 0, 'octane');
-        blueCount++;
-      }
-      while (orangeCount < maxPerTeam && this.players.size < this.maxPlayers) {
-        const sid = `bot_fill_${fillSeq++}`;
-        this.assignPlayerSlot(sid, `Bot ${fillSeq - 1}`, 'player', 1, 'octane');
-        orangeCount++;
-      }
+    } finally {
+      this._applyingBotFillPolicy = false;
     }
   }
 
@@ -286,6 +292,7 @@ export class MatchSessionAdmin {
       this.physicsManager.sim?.setUnlimitedBoost?.(false);
       this.physicsManager.restoreSolidCollisions?.();
       this.physicsManager.resetKickoff(0);
+      this.applyRosterKickoffSpawns();
       this.matchTick = this.physicsManager.currentTick;
     }
 
@@ -334,6 +341,10 @@ export class MatchSessionAdmin {
     applyPendingHitboxSwaps(this);
   }
 
+  applyRosterKickoffSpawns() {
+    applyRosterKickoffSpawns(this);
+  }
+
   resetTrainingPlay() {
     this.state = MATCH_STATES.PLAYING;
     this.goalBufferTicks = -1;
@@ -343,6 +354,7 @@ export class MatchSessionAdmin {
     if (this.physicsManager) {
       this._applyPendingHitboxSwaps();
       this.physicsManager.resetKickoff(0);
+      this.applyRosterKickoffSpawns();
       this.physicsManager.setInputMask(false);
       this.matchTick = this.physicsManager.currentTick;
     }
@@ -361,6 +373,7 @@ export class MatchSessionAdmin {
     if (this.physicsManager) {
       this._applyPendingHitboxSwaps();
       this.physicsManager.resetKickoff(0);
+      this.applyRosterKickoffSpawns();
       this.matchTick = this.physicsManager.currentTick;
     }
 

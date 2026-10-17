@@ -83,17 +83,30 @@ export function drainAndParseServerPackets(reconciler, incomingPackets, nowMs) {
       if (parsedItem && typeof parsedItem === 'object') {
         if (parsedItem.serverTick !== undefined) {
           packet = parsedItem;
+        } else if (parsedItem.type === 'roster_update') {
+          reconciler.onRosterUpdate?.(parsedItem);
+          continue;
         } else if (parsedItem.type === 'handshake_response') {
-          if (parsedItem.initialSnapshot && (parsedItem.serverFrame !== undefined || parsedItem.matchTick !== undefined)) {
-            const frame = parsedItem.serverFrame ?? parsedItem.matchTick ?? 0;
-            const snap = new Float32Array(parsedItem.initialSnapshot);
-            reconciler.syncTimeline(snap, frame, nowMs);
-            if (reconciler.interpolator) {
-              reconciler.interpolator.sync(nowMs);
-            }
-          }
           if (typeof parsedItem.entityId === 'number' && parsedItem.entityId >= 0) {
             reconciler.localCarIndex = parsedItem.entityId;
+          }
+          if (parsedItem.state === 'lobby') {
+            reconciler.setLobbyDualWorldMode?.(true);
+            if (parsedItem.initialSnapshot) {
+              const snap = new Float32Array(parsedItem.initialSnapshot);
+              reconciler.lobbyPrevAuthoritativeState = new Float32Array(snap);
+              reconciler.lobbyCurrAuthoritativeState = new Float32Array(snap);
+            }
+          } else {
+            reconciler.setLobbyDualWorldMode?.(false);
+            if (parsedItem.initialSnapshot && (parsedItem.serverFrame !== undefined || parsedItem.matchTick !== undefined)) {
+              const frame = parsedItem.serverFrame ?? parsedItem.matchTick ?? 0;
+              const snap = new Float32Array(parsedItem.initialSnapshot);
+              reconciler.syncTimeline(snap, frame, nowMs);
+              if (reconciler.interpolator) {
+                reconciler.interpolator.sync(nowMs);
+              }
+            }
           }
           reconciler.onHandshakeResponse?.(parsedItem);
           continue;

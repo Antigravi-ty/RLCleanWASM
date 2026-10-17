@@ -86,6 +86,9 @@ export function bindReconcilerSignals(runtime, reconciler) {
 
         case MATCH_SIGNALS.MATCH_PREPARE: {
           const matchSeq = sig.param1 || 1;
+          reconciler.setLobbyDualWorldMode?.(false);
+          reconciler.setReplayPlaybackMode?.(false);
+          reconciler.resetTimelineState?.();
           r.physics?.resetGoalLatch?.();
           r.physics?.setSimulationFrozen?.(false);
           r.physics?.setUnlimitedBoost?.(false);
@@ -101,6 +104,7 @@ export function bindReconcilerSignals(runtime, reconciler) {
             r.match.state.phase = 'prepare';
             r.match.state.paused = false;
           }
+          r.modeManager?.setMode?.('match');
           useUIStore.getState().setMatchMode('match');
           hudStore.getState().setMatchState({
             matchPhase: 'prepare',
@@ -117,6 +121,9 @@ export function bindReconcilerSignals(runtime, reconciler) {
         }
 
         case MATCH_SIGNALS.MATCH_STARTED: {
+          reconciler.setLobbyDualWorldMode?.(false);
+          reconciler.setReplayPlaybackMode?.(false);
+          reconciler.resetTimelineState?.();
           r.physics?.resetGoalLatch?.();
           r.physics?.setSimulationFrozen?.(false);
           r.physics?.setUnlimitedBoost?.(false);
@@ -135,6 +142,7 @@ export function bindReconcilerSignals(runtime, reconciler) {
             r.match.state.overtimeSeconds = 0;
             r.match.state.winner = null;
           }
+          r.modeManager?.setMode?.('match');
           useUIStore.getState().setMatchMode('match');
           hudStore.getState().setMatchState({
             blueScore: 0,
@@ -149,6 +157,8 @@ export function bindReconcilerSignals(runtime, reconciler) {
         }
 
         case MATCH_SIGNALS.KICKOFF_WILL_START: {
+          reconciler.setLobbyDualWorldMode?.(false);
+          reconciler.setReplayPlaybackMode?.(false);
           r.physics?.resetGoalLatch?.();
           r.physics?.setSimulationFrozen?.(false);
           r.physics?.setUnlimitedBoost?.(false);
@@ -170,6 +180,7 @@ export function bindReconcilerSignals(runtime, reconciler) {
             r.match.state.paused = false;
             r.match.state.countdown = displaySec;
           }
+          r.modeManager?.setMode?.('match');
           useUIStore.getState().setMatchMode('match');
 
           hudStore.getState().setMatchState({
@@ -180,6 +191,7 @@ export function bindReconcilerSignals(runtime, reconciler) {
           if (r.lastKickoffTargetFrame !== targetFrame || isFirstSeenSignalId) {
             r.lastKickoffTargetFrame = targetFrame;
             r.latchedKickoffSeconds = new Set();
+            reconciler.resetTimelineState?.();
           }
 
           if (remainingTicks <= 360 && remainingTicks > 240 && !r.latchedKickoffSeconds.has(3)) {
@@ -196,6 +208,8 @@ export function bindReconcilerSignals(runtime, reconciler) {
         }
 
         case MATCH_SIGNALS.KICKOFF_START: {
+          reconciler.setLobbyDualWorldMode?.(false);
+          reconciler.setReplayPlaybackMode?.(false);
           r.physics?.resetGoalLatch?.();
           r.physics?.setSimulationFrozen?.(false);
           r.replayTimelineController?.endReplaySession?.();
@@ -257,6 +271,7 @@ export function bindReconcilerSignals(runtime, reconciler) {
         }
 
         case MATCH_SIGNALS.GOAL_REPLAY_START: {
+          reconciler.setReplayPlaybackMode?.(true);
           r.physics?.resetGoalLatch?.();
           const replayTicks = sig.param1 > 0 ? sig.param1 : 360;
           if (r.match) {
@@ -274,6 +289,9 @@ export function bindReconcilerSignals(runtime, reconciler) {
 
         case MATCH_SIGNALS.GOAL_REPLAY_WILL_END:
         case MATCH_SIGNALS.GOAL_REPLAY_END: {
+          if (sig.signalType === MATCH_SIGNALS.GOAL_REPLAY_END) {
+            reconciler.setReplayPlaybackMode?.(false);
+          }
           r.physics?.resetGoalLatch?.();
           r.physics?.setSimulationFrozen?.(false);
           r.replayTimelineController?.endReplaySession?.();

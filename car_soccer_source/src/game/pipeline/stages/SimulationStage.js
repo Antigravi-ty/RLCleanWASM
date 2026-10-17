@@ -22,10 +22,15 @@ export class SimulationStage {
     const isMatchEnded =
       r.match.state.mode === 'match' &&
       (r.match.state.phase === 'ended' || r.match.state.phase === 'podium');
+    const isGoalReplay =
+      r.match.state.mode === 'match' &&
+      r.match.state.phase === 'replay';
 
     // 1. Advance Physics Interpolator accumulator
-    if (r.match.state.paused || isMatchEnded) {
-      r.interpolator.sync(timestamp);
+    if (r.match.state.paused || isMatchEnded || isGoalReplay) {
+      if (!isGoalReplay) {
+        r.interpolator.sync(timestamp);
+      }
     } else {
       const isLocalSinglePlayerBotMatch = Boolean(
         r.isBotMatch &&
@@ -84,7 +89,12 @@ export class SimulationStage {
         r.networkReconciler.flushPendingControlPackets?.(now);
       }
       const tickAfterReconcile = Math.floor(r.physics.getHeaderView().tickCount);
-      if (r.interpolator) {
+      if (
+        r.interpolator &&
+        !isGoalReplay &&
+        !r.networkReconciler.lobbyDualWorldMode &&
+        !r.networkReconciler.replayPlaybackMode
+      ) {
         r.interpolator.currState.set(r.physics.state);
         if (
           tickAfterReconcile !== tickBeforeReconcile ||

@@ -9,7 +9,7 @@
 
 import { BaseGameMode } from './BaseGameMode.js';
 import { RocketSimPhysicsEngine } from '../../physics/RocketSimPhysicsEngine.js';
-import { KickoffGhostVisuals } from './KickoffGhostVisuals.js';
+import { MultiWorldGhostRenderer } from './MultiWorldGhostRenderer.js';
 import {
   PROBE_BOOST_SLOT,
   PROBE_QE_SLOT,
@@ -37,16 +37,27 @@ import { hudStore } from '../../ui-system/index';
 import { floatingStore } from '../../ui-system/tokens/floatingStore';
 import { DEV_TEST_LAB_PRESET } from '../../ui-system/tokens/floatingPresets';
 
+const MULTI_WORLD_SPAWN_PRESETS = Object.freeze([
+  { pos: [0, -2560, 17.05], rot: [0, Math.PI / 2, 0] },
+  { pos: [0, 2560, 17.05], rot: [0, -Math.PI / 2, 0] },
+  { pos: [-1952, -2464, 17.05], rot: [0, Math.PI / 4, 0] },
+  { pos: [1952, 2464, 17.05], rot: [0, -3 * Math.PI / 4, 0] },
+  { pos: [1952, -2464, 17.05], rot: [0, 3 * Math.PI / 4, 0] },
+  { pos: [-1952, 2464, 17.05], rot: [0, -Math.PI / 4, 0] },
+  { pos: [-256, -3840, 17.05], rot: [0, Math.PI / 2, 0] },
+  { pos: [256, 3840, 17.05], rot: [0, -Math.PI / 2, 0] },
+]);
+
 export class DeveloperTestLabMode extends BaseGameMode {
   constructor(runtime) {
     super('dev-test-lab', runtime);
     this.probeState = null;
 
-    this.secondarySim = null;
-    this.secondaryInitPromise = null;
-    this.secondaryPrevState = null;
-    this.secondaryCurrState = null;
+    this.ghostWorlds = []; // Array of { worldId, sim, prevState, currState }
+    this.externalGhostWorlds = new Map(); // Arbitrary external world feeds (3rd+ world custom sync)
+    this.ghostWorldsInitPromise = null;
     this.ghostVisuals = null;
+    this._currentActiveWorldIdx = 0;
 
     this.tasFrames = [];
     this.tasCursor = 0;
@@ -79,44 +90,123 @@ export class DeveloperTestLabMode extends BaseGameMode {
     this.incidentLatched10s = -1;
   }
 
-  _resetSecondaryWorldSpawn(sim) {
+  _configureWorldCarsCount(sim, carsPerWorld = 1, worldIndex = 0, syncArenaVisuals = false) {
     if (!sim) return;
-    while (sim.numCars > 1 && typeof sim.removeCar === 'function') {
+    const targetCount = Math.max(1, Math.min(8, Math.round(carsPerWorld || 1)));
+    while (sim.numCars > targetCount && typeof sim.removeCar === 'function') {
       sim.removeCar(sim.numCars - 1);
     }
-    if (sim.numCars < 1) sim.addCar(0, 'octane');
+    const existingCars = sim.numCars;
+    while (sim.numCars < targetCount) {
+      const slotIdx = sim.numCars;
+      const team = slotIdx % 2;
+      sim.addCar(team, 'octane');
+    }
     sim.setUnlimitedBoost(true);
+
+    // Position any newly added cars at deterministic non-overlapping spawns
+    for (let c = existingCars; c < targetCount; c++) {
+      const preset = MULTI_WORLD_SPAWN_PRESETS[(c + worldIndex) % MULTI_WORLD_SPAWN_PRESETS.length];
+      sim.setCarState(c, {
+        pos: [
+          preset.pos[0] + (worldIndex * 160 * (c % 2 === 0 ? 1 : -1)),
+          preset.pos[1],
+          preset.pos[2],
+        ],
+        vel: [0, 0, 0],
+        angVel: [0, 0, 0],
+        rot: preset.rot,
+        boost: 100,
+      });
+    }
+
+    if (syncArenaVisuals && this.runtime?.arena) {
+      const arena = this.runtime.arena;
+      while (arena.cars.length < targetCount && typeof arena.addExtraCarVisual === 'function') {
+        const slotIdx = arena.cars.length;
+        arena.addExtraCarVisual('game-car', slotIdx % 2 === 0 ? 0x3b82f6 : 0xf97316);
+      }
+      for (let i = 0; i < arena.cars.length; i++) {
+        if (arena.cars[i]) arena.cars[i].visible = i < targetCount;
+      }
+    }
+  }
+
+  _resetSecondaryWorldSpawn(sim, worldIndex = 1, carsPerWorld = 1) {
+    if (!sim) return;
     sim.resetKickoff(0, false);
-    sim.setCarState(0, {
-      pos: [0, 2560, 17.05],
+    this._configureWorldCarsCount(sim, carsPerWorld, worldIndex, false);
+    for (let c = 0; c < Math.min(8, carsPerWorld); c++) {
+      const preset = MULTI_WORLD_SPAWN_PRESETS[(c + worldIndex) % MULTI_WORLD_SPAWN_PRESETS.length];
+      sim.setCarState(c, {
+        pos: [
+          preset.pos[0] + (worldIndex * 180 * (c % 2 === 0 ? 1 : -1)),
+          preset.pos[1],
+          preset.pos[2],
+        ],
+        vel: [0, 0, 0],
+        angVel: [0, 0, 0],
+        rot: preset.rot,
+        boost: 100,
+      });
+    }
+    sim.setBallState({
+      pos: [worldIndex * 220 * (worldIndex % 2 === 1 ? 1 : -1), 0, 93.15],
       vel: [0, 0, 0],
       angVel: [0, 0, 0],
-      rot: [0, -Math.PI / 2, 0],
-      boost: 100,
     });
-    sim.setBallState({ pos: [0, 0, 93.15], vel: [0, 0, 0], angVel: [0, 0, 0] });
     sim.step(1);
   }
 
-  async _ensureSecondaryEngine() {
-    if (this.secondarySim?.isInitialized) return this.secondarySim;
-    if (this.secondaryInitPromise) return this.secondaryInitPromise;
+  async _ensureGhostWorldEngines(ghostEngineCount = 1, carsPerWorld = 1) {
+    const needed = Math.max(1, Math.min(7, ghostEngineCount));
+    if (this.ghostWorldsInitPromise) {
+      await this.ghostWorldsInitPromise;
+    }
 
-    this.secondaryInitPromise = (async () => {
-      const sim = new RocketSimPhysicsEngine();
-      await sim.init({
-        collisionData: RocketSimPhysicsEngine.cachedCollisionData,
-        freshInstance: true,
-        isolated: true,
-      });
-      sim.configureCars('default', false, 0);
-      this._resetSecondaryWorldSpawn(sim);
-      this.secondarySim = sim;
-      this.secondaryPrevState = sim.state.slice();
-      this.secondaryCurrState = sim.state.slice();
-      return sim;
+    this.ghostWorldsInitPromise = (async () => {
+      while (this.ghostWorlds.length < needed) {
+        const wIdx = this.ghostWorlds.length + 1;
+        const sim = new RocketSimPhysicsEngine();
+        await sim.init({
+          collisionData: RocketSimPhysicsEngine.cachedCollisionData,
+          freshInstance: true,
+          isolated: true,
+        });
+        sim.configureCars('default', false, 0);
+        this._resetSecondaryWorldSpawn(sim, wIdx, carsPerWorld);
+        this.ghostWorlds.push({
+          worldId: `world-${wIdx}`,
+          worldIndex: wIdx,
+          sim,
+          prevState: sim.state.slice(),
+          currState: sim.state.slice(),
+        });
+      }
+      for (let i = 0; i < needed; i++) {
+        const gw = this.ghostWorlds[i];
+        this._configureWorldCarsCount(gw.sim, carsPerWorld, i + 1, false);
+        gw.prevState.set(gw.sim.state);
+        gw.currState.set(gw.sim.state);
+      }
+      return this.ghostWorlds.slice(0, needed);
     })();
-    return this.secondaryInitPromise;
+
+    return this.ghostWorldsInitPromise;
+  }
+
+  /**
+   * Public API to inject or synchronize an arbitrary external Ghost World (3rd world, 4th world, etc.)
+   * with up to 8 cars + 1 ball.
+   */
+  syncExternalGhostWorld(worldId, prevState, currState, options = {}) {
+    if (!prevState || !currState) return;
+    this.externalGhostWorlds.set(worldId, {
+      worldId,
+      prevState: prevState instanceof Float32Array ? prevState : new Float32Array(prevState),
+      currState: currState instanceof Float32Array ? currState : new Float32Array(currState),
+      options,
+    });
   }
 
   _ensureSinglePlayerCarOnly() {
@@ -150,7 +240,7 @@ export class DeveloperTestLabMode extends BaseGameMode {
     }
 
     if (!this.ghostVisuals && r.arena) {
-      this.ghostVisuals = new KickoffGhostVisuals(r.arena);
+      this.ghostVisuals = new MultiWorldGhostRenderer(r.arena);
     }
 
     store.setRuntimeHandlers({
@@ -260,22 +350,36 @@ export class DeveloperTestLabMode extends BaseGameMode {
   _syncDualWorldConfiguration() {
     const r = this.runtime;
     const store = useDevTestLabStore.getState();
-    if (!this.ghostVisuals && r.arena) this.ghostVisuals = new KickoffGhostVisuals(r.arena);
+    if (!this.ghostVisuals && r.arena) this.ghostVisuals = new MultiWorldGhostRenderer(r.arena);
     if (store.activeTab === 'dual-world' && store.dualWorldEnabled) {
-      this._ensureSinglePlayerCarOnly();
-      this._ensureSecondaryEngine().then((sim) => {
-        if (useDevTestLabStore.getState().activeTab !== 'dual-world') return;
-        while (sim.numCars > 1 && typeof sim.removeCar === 'function') sim.removeCar(sim.numCars - 1);
-        if (!this.ghostVisuals) return;
-        this.ghostVisuals.ensureBuilt();
-        this.ghostVisuals.setGhostPlacement('same');
-        this.ghostVisuals.setEntityVisibility(true, true);
-        this.ghostVisuals.setVisible(true);
-        const opacity = useDevTestLabStore.getState().ghostOpacity;
-        for (const mat of this.ghostVisuals.ghostCarMaterials || []) mat.opacity = opacity;
-        if (this.ghostVisuals.ghostBallMesh?.material) {
-          this.ghostVisuals.ghostBallMesh.material.opacity = opacity * 0.85;
+      const totalWorlds = Math.max(2, Math.min(4, store.ghostWorldCount || 2));
+      const ghostCount = totalWorlds - 1;
+      const carsPerWorld = Math.max(1, Math.min(8, store.ghostCarsPerWorld || 1));
+
+      if (r.physics) {
+        parkDevTestLabProbes(r.physics, r.arena);
+        this.probeState = null;
+        this._configureWorldCarsCount(r.physics, carsPerWorld, 0, true);
+      }
+
+      this._ensureGhostWorldEngines(ghostCount, carsPerWorld).then((ghostList) => {
+        const latestStore = useDevTestLabStore.getState();
+        if (latestStore.activeTab !== 'dual-world' || !this.ghostVisuals) return;
+        const opacity = latestStore.ghostOpacity;
+
+        for (let i = 0; i < this.ghostWorlds.length; i++) {
+          const gw = this.ghostWorlds[i];
+          const isActiveGhost = i < ghostList.length;
+          this.ghostVisuals.ensureWorld(gw.worldId, {
+            paletteIndex: i + 1,
+            opacity,
+            showCar: true,
+            showBall: true,
+          });
+          this.ghostVisuals.setVisible(isActiveGhost, gw.worldId);
         }
+        this.ghostVisuals.setVisible(true);
+        this.ghostVisuals.setOpacity(opacity);
       });
     } else if (this.ghostVisuals) {
       this.ghostVisuals.setVisible(false);
@@ -284,22 +388,35 @@ export class DeveloperTestLabMode extends BaseGameMode {
 
   _handleSwitchWorld() {
     const r = this.runtime;
-    if (!r.physics || !this.secondarySim?.isInitialized) return;
-    this._ensureSinglePlayerCarOnly();
-    while (this.secondarySim.numCars > 1 && typeof this.secondarySim.removeCar === 'function') {
-      this.secondarySim.removeCar(this.secondarySim.numCars - 1);
+    const store = useDevTestLabStore.getState();
+    const totalWorlds = Math.max(2, Math.min(4, store.ghostWorldCount || 2));
+    const ghostCount = totalWorlds - 1;
+    const carsPerWorld = Math.max(1, Math.min(8, store.ghostCarsPerWorld || 1));
+    if (!r.physics || this.ghostWorlds.length < ghostCount) return;
+
+    // Rotate snapshots across (Primary World -> Ghost World 1 -> ... -> Ghost World K -> Primary World)
+    const primarySnap = r.physics.saveState();
+    const ghostSnaps = [];
+    for (let i = 0; i < ghostCount; i++) {
+      ghostSnaps.push(this.ghostWorlds[i].sim.saveState());
     }
-    const snapA = r.physics.saveState();
-    const snapB = this.secondarySim.saveState();
-    r.physics.restoreState(snapB);
-    this.secondarySim.restoreState(snapA);
+
+    r.physics.restoreState(ghostSnaps[0]);
+    this._configureWorldCarsCount(r.physics, carsPerWorld, 0, true);
+
+    for (let i = 0; i < ghostCount - 1; i++) {
+      this.ghostWorlds[i].sim.restoreState(ghostSnaps[i + 1]);
+    }
+    this.ghostWorlds[ghostCount - 1].sim.restoreState(primarySnap);
+
     r.interpolator?.sync?.();
-    this.secondaryPrevState.set(this.secondarySim.state);
-    this.secondaryCurrState.set(this.secondarySim.state);
+    for (let i = 0; i < ghostCount; i++) {
+      const gw = this.ghostWorlds[i];
+      gw.prevState.set(gw.sim.state);
+      gw.currState.set(gw.sim.state);
+    }
     if (this.ghostVisuals) {
-      this.ghostVisuals.setGhostPlacement('same');
-      const opacity = useDevTestLabStore.getState().ghostOpacity;
-      for (const mat of this.ghostVisuals.ghostCarMaterials || []) mat.opacity = opacity;
+      this.ghostVisuals.setOpacity(store.ghostOpacity);
     }
   }
 
@@ -412,11 +529,19 @@ export class DeveloperTestLabMode extends BaseGameMode {
       }
     }
 
-    if (activeTab === 'dual-world' && store.dualWorldEnabled && this.secondarySim?.isInitialized) {
-      this.secondaryPrevState.set(this.secondaryCurrState);
-      this.secondarySim.setControls(0, r.neutralControls);
-      this.secondarySim.step(1);
-      this.secondaryCurrState.set(this.secondarySim.state);
+    if (activeTab === 'dual-world' && store.dualWorldEnabled) {
+      const ghostCount = Math.max(1, Math.min(3, (store.ghostWorldCount || 2) - 1));
+      const carsPerWorld = Math.max(1, Math.min(8, store.ghostCarsPerWorld || 1));
+      for (let i = 0; i < Math.min(ghostCount, this.ghostWorlds.length); i++) {
+        const gw = this.ghostWorlds[i];
+        if (!gw?.sim?.isInitialized) continue;
+        gw.prevState.set(gw.currState);
+        for (let c = 0; c < Math.min(carsPerWorld, gw.sim.numCars); c++) {
+          gw.sim.setControls(c, r.neutralControls);
+        }
+        gw.sim.step(1);
+        gw.currState.set(gw.sim.state);
+      }
     }
 
     if (activeTab === 'incident-match' && store.incidentMatchActive && r.physics) {
@@ -434,15 +559,38 @@ export class DeveloperTestLabMode extends BaseGameMode {
     const { dt, playerCarView } = context;
     const store = useDevTestLabStore.getState();
 
-    if (store.activeTab === 'dual-world' && store.dualWorldEnabled && this.ghostVisuals && this.secondarySim?.isInitialized) {
-      this.ghostVisuals.update(
-        this.secondaryPrevState,
-        this.secondaryCurrState,
-        r.interpolator?.alpha ?? 1.0,
-        dt ?? 0.016,
-        r.neutralControls,
-        false
-      );
+    if (store.activeTab === 'dual-world' && store.dualWorldEnabled && this.ghostVisuals) {
+      const alpha = r.interpolator?.alpha ?? 1.0;
+      const frameDt = dt ?? 0.016;
+      const ghostCount = Math.max(1, Math.min(3, (store.ghostWorldCount || 2) - 1));
+
+      for (let i = 0; i < Math.min(ghostCount, this.ghostWorlds.length); i++) {
+        const gw = this.ghostWorlds[i];
+        if (!gw?.sim?.isInitialized) continue;
+        this.ghostVisuals.updateWorld(
+          gw.worldId,
+          gw.prevState,
+          gw.currState,
+          alpha,
+          frameDt,
+          {
+            paletteIndex: i + 1,
+            controls: r.neutralControls,
+            showBall: true,
+          }
+        );
+      }
+
+      for (const ext of this.externalGhostWorlds.values()) {
+        this.ghostVisuals.updateWorld(
+          ext.worldId,
+          ext.prevState,
+          ext.currState,
+          alpha,
+          frameDt,
+          ext.options || { showBall: true }
+        );
+      }
     }
     if (playerCarView) {
       hudStore.getState().setBoost(playerCarView.boost, playerCarView.isBoosting, store.activeTab !== 'incident-match');
