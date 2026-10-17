@@ -164,7 +164,7 @@ export class RuntimeBotCoordinator {
 
     const presetId = r.selectedPreset === 'flat-car' ? 'flat' : 'octane';
 
-    // Spawn 120Hz Authoritative Local Server Worker
+    // Spawn 120Hz Authoritative Local Server Worker directly in match kickoff state
     r.authoritativeServer = new HostServerWorker(null, {
       snapshotInterval: 1,
       initialState: Array.from(initialSnapshot),
@@ -173,6 +173,7 @@ export class RuntimeBotCoordinator {
       hostColorSlot: r.selectedColorSlot ?? 0,
       roomId: 'local_bot_match',
       isBotMatch: true,
+      startAsMatch: true,
       botPlayerName: r.bot?.name || 'AI Bot',
       numCars: 2,
       durationSeconds
@@ -180,7 +181,6 @@ export class RuntimeBotCoordinator {
     await r.authoritativeServer.init();
 
     r.authoritativeServer.sim.setUnlimitedBoost(false);
-    await Promise.resolve(r.authoritativeServer.sim.restoreState(initialSnapshot));
 
     // Connect player client to server worker via dedicated 0ms loopback hostChannel
     const prevExtraLatencyMs = typeof r.networkChannel?.extraLatencyMs === 'number' && Number.isFinite(r.networkChannel.extraLatencyMs)
@@ -191,9 +191,14 @@ export class RuntimeBotCoordinator {
       r.networkChannel.extraLatencyMs = prevExtraLatencyMs;
     }
     r.playerCarIndex = 0;
+    if (r.arena) {
+      r.arena.playerCarIndex = 0;
+    }
 
     const serverSnap = r.authoritativeServer.sim.saveCompactState();
     const serverTick = Math.floor(r.authoritativeServer.sim.getHeaderView().tickCount);
+    r.physics?.restoreState?.(serverSnap);
+    r.interpolator?.sync?.(performance.now());
 
     const uiState = useUIStore?.getState?.();
     const initialBufferTarget = typeof uiState?.inputBufferTarget === 'number' ? uiState.inputBufferTarget : 3;
@@ -229,8 +234,6 @@ export class RuntimeBotCoordinator {
     r.audioLastRemainingSec = durationSeconds;
     r.lastKickoffCountdownSec = -1;
 
-    r.authoritativeServer.startMatch(durationSeconds);
-
     if (r.match) {
       r.match.state.mode = 'match';
       r.match.state.paused = false;
@@ -261,6 +264,7 @@ export class RuntimeBotCoordinator {
     this.resetBotState();
     r.resetAudio();
     resetRuntimeReconcilerSignalState(r);
+    r.setLobbyGhostMode?.(false);
     if (r.authoritativeServer) {
       r.authoritativeServer.destroy?.();
       r.authoritativeServer = null;
@@ -270,8 +274,15 @@ export class RuntimeBotCoordinator {
       r.networkChannel = null;
     }
     r.networkReconciler = null;
-    if (r.arena?.cars?.[1]) {
-      r.arena.cars[1].visible = false;
+    r.playerCarIndex = 0;
+    if (r.arena) {
+      r.arena.playerCarIndex = 0;
+      if (r.arena.cars) {
+        if (r.arena.cars[0]) r.arena.cars[0].visible = true;
+        for (let i = 1; i < r.arena.cars.length; i++) {
+          if (r.arena.cars[i]) r.arena.cars[i].visible = false;
+        }
+      }
     }
     r.match?.leave?.();
     if (r.match) {
@@ -299,6 +310,14 @@ export class RuntimeBotCoordinator {
     });
     if (useUIStore && typeof useUIStore.getState === 'function') {
       useUIStore.getState().setMatchMode('freeplay');
+      useUIStore.getState().setOnlineSession({
+        isHosting: false,
+        roomId: '',
+        signalingConnected: false,
+        connectedPeers: [],
+        roomType: 'warmup',
+        isReady: false
+      });
     }
   }
 }

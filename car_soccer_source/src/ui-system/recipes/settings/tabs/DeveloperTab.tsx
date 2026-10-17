@@ -97,7 +97,7 @@ export const DeveloperTab: React.FC<DeveloperTabProps> = ({
         }`}
         onMouseEnter={() =>
           onHover(
-            'Enter the Developer Test Lab: Automatically spawns the 70% opacity Floating Controller for 0G/Z-Hover Probes, Dual-World Ghost, TAS Replay (O/P/[/]), and 90s Incident Match.'
+            'Enter the Developer Test Lab: Automatically spawns the 70% opacity Floating Controller for 0G/Z-Hover Probes, Multi-World Ghost, State Replay (O/P/[/]), and 90s Incident Match.'
           )
         }
         onMouseLeave={onLeave}
@@ -114,7 +114,7 @@ export const DeveloperTab: React.FC<DeveloperTabProps> = ({
               </span>
             </div>
             <span className={`text-xs mt-0.5 line-clamp-2 ${isLight ? 'text-neutral-600' : 'text-neutral-300'}`}>
-              Probes (Z:100→200 + QE), Dual-World Ghost, TAS Replay (O/P/[/]), & 90s Incident Match
+              Probes (Z:100→200 + QE), Multi-World Ghost, State Replay (O/P/[/]), & 90s Incident Match
             </span>
           </div>
         </div>
@@ -142,7 +142,7 @@ export const DeveloperTab: React.FC<DeveloperTabProps> = ({
         iconBgClass="bg-amber-500/10 text-amber-500"
         badge="70% Opacity"
         badgeClass="bg-amber-500/15 border-amber-500/30 text-amber-400"
-        description="Floating controller for Probes, Dual-World Ghost, TAS Scrubbing & 90s Incident Match"
+        description="Floating controller for Probes, Multi-World Ghost, State Replay & 90s Incident Match"
         hoverTooltip="Developer Test Lab Controller: Closing this window from the top-right Stack automatically returns to Free Play."
         onHover={onHover}
         onLeave={onLeave}

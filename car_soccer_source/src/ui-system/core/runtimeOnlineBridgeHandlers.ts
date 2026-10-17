@@ -84,8 +84,13 @@ export function createOnlineBridgeHandlers(gameRuntime: any) {
       try {
         const session = gameRuntime.multiplayerSession;
         if (session) {
-          await session.stopHosting?.();
-        } else if (typeof gameRuntime.stopOnlineServer === 'function') {
+          if (session.isHosting) {
+            await session.stopHosting?.();
+          } else {
+            await session.leaveSession?.();
+          }
+        }
+        if (typeof gameRuntime.stopOnlineServer === 'function') {
           await gameRuntime.stopOnlineServer();
         }
         useUIStore.getState().setMatchMode('freeplay');
@@ -94,6 +99,8 @@ export function createOnlineBridgeHandlers(gameRuntime: any) {
           roomId: '',
           signalingConnected: false,
           connectedPeers: [],
+          roomType: 'warmup',
+          isReady: false,
         });
       } catch (e) {
         console.error('[mountGameUI] Error stopping online server', e);

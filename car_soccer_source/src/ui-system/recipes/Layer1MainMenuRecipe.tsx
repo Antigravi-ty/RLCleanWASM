@@ -46,11 +46,17 @@ export const Layer1MainMenuRecipe: React.FC<Layer1MainMenuRecipeProps> = ({
   const isInMatch = matchMode === 'match';
   const isDevTestLab = matchMode === 'dev-test-lab';
   const isKickoffTraining = matchMode === 'kickoff-training';
-  const isCustomMatch = isOnlineMatch && !isInMatch && !isDevTestLab;
+  const hasActiveOnlineRoom =
+    matchMode === 'online-warmup' ||
+    Boolean(onlineSession?.isHosting) ||
+    Boolean(onlineSession?.roomId);
+  const isCustomMatch = isOnlineMatch && hasActiveOnlineRoom && !isInMatch && !isDevTestLab && !isKickoffTraining;
   const isOnlineWarmup =
-    (matchMode === 'online-warmup' || (Boolean(onlineSession?.roomId) && !isOnlineMatch)) &&
+    !isCustomMatch &&
+    hasActiveOnlineRoom &&
     !isInMatch &&
-    !isDevTestLab;
+    !isDevTestLab &&
+    !isKickoffTraining;
 
   let headerTitle = 'MENU';
   if (isInMatch) {

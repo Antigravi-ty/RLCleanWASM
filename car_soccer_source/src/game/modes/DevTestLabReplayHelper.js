@@ -23,7 +23,7 @@ export function bindDevTestLabReplayHotkeys(mode) {
       if (!evt.repeat) {
         evt.preventDefault();
         evt.stopImmediatePropagation();
-        useDevTestLabStore.getState().setActiveTab('tas-replay');
+        useDevTestLabStore.getState().setActiveTab('state-replay');
         mode.startTasRecording();
       }
       return;
@@ -39,14 +39,14 @@ export function bindDevTestLabReplayHotkeys(mode) {
     }
 
     if (evt.code === 'BracketLeft' || evt.key === '[') {
-      if (useDevTestLabStore.getState().activeTab !== 'tas-replay') return;
+      if (useDevTestLabStore.getState().activeTab !== 'state-replay') return;
       evt.preventDefault();
       if (!evt.repeat) mode.beginTasScrub('rewinding');
       return;
     }
 
     if (evt.code === 'BracketRight' || evt.key === ']') {
-      if (useDevTestLabStore.getState().activeTab !== 'tas-replay') return;
+      if (useDevTestLabStore.getState().activeTab !== 'state-replay') return;
       evt.preventDefault();
       if (!evt.repeat) mode.beginTasScrub('forwarding');
     }
@@ -55,7 +55,7 @@ export function bindDevTestLabReplayHotkeys(mode) {
   mode._keyUpHandler = (evt) => {
     if (mode.runtime?.match?.state?.mode !== 'dev-test-lab') return;
     if (evt.code === 'BracketLeft' || evt.key === '[' || evt.code === 'BracketRight' || evt.key === ']') {
-      if (useDevTestLabStore.getState().activeTab !== 'tas-replay') return;
+      if (useDevTestLabStore.getState().activeTab !== 'state-replay') return;
       evt.preventDefault();
       mode.pauseTasScrub();
     }
@@ -98,7 +98,7 @@ export function applyTasFrameAtCursor(mode) {
 
 export function recordTasFrameAfterTick(mode, store) {
   const r = mode.runtime;
-  if (store.activeTab !== 'tas-replay' || store.tasState !== 'recording' || !r?.physics) return;
+  if (store.activeTab !== 'state-replay' || store.tasState !== 'recording' || !r?.physics) return;
   if (mode.tasFrames.length < MAX_TAS_FRAMES) {
     mode.tasFrames.push({
       arenaSnap: r.physics.saveState(),

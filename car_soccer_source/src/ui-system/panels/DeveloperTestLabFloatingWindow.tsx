@@ -313,7 +313,7 @@ export const DeveloperTestLabFloatingWindow: React.FC<DeveloperTestLabFloatingWi
       {/* ================================================================= */}
       {/* BENCH 3: State Replay Scrubbing & Recording (O / P / [ / ])       */}
       {/* ================================================================= */}
-      {activeTab === 'tas-replay' && (
+      {activeTab === 'state-replay' && (
         <div className="flex flex-col gap-2.5">
           <div className={`p-2.5 rounded-xl border flex flex-col gap-2 ${cardBg}`}>
             <div className="flex items-center justify-between">

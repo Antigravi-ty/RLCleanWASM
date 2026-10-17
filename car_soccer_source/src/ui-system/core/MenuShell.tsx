@@ -316,7 +316,13 @@ export const MenuShell: React.FC<MenuShellProps> = ({ inspectorSlot }) => {
         {activeRoute === 'online-warmup' && (
           <Layer3OnlineWarmupRecipe
             isLight={isLight}
-            onBack={goBack}
+            onBack={() => {
+              const s = useUIStore.getState().onlineSession;
+              if (!s?.roomId && !s?.isHosting) {
+                useUIStore.getState().setOnlineSession({ roomType: 'warmup' });
+              }
+              goBack();
+            }}
             onHostSuccess={() => navigate('room-host-control')}
             onJoinSuccess={() => navigate('room-host-control')}
           />

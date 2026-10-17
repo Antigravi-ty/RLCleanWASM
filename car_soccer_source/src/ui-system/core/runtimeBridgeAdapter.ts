@@ -213,6 +213,17 @@ export function attachGameRuntimeBridge(gameRuntime: any) {
       if (!gameRuntime) return;
       useUIStore.getState().closeMenu();
       floatingStore.closeWindow(DEV_TEST_LAB_PRESET.id);
+      const session = gameRuntime.multiplayerSession;
+      if (session) {
+        if (session.isHosting) {
+          session.stopHosting?.();
+        } else if (session.clientController || session.signalingHandler) {
+          session.leaveSession?.();
+        }
+      }
+      if (typeof gameRuntime.stopOnlineServer === 'function' && (gameRuntime.authoritativeServer || gameRuntime.networkChannel)) {
+        gameRuntime.stopOnlineServer();
+      }
       if (typeof gameRuntime.leaveBotMatch === 'function') {
         gameRuntime.leaveBotMatch();
       } else if (gameRuntime.match) {
@@ -230,6 +241,14 @@ export function attachGameRuntimeBridge(gameRuntime: any) {
       }
       gameRuntime.modeManager?.setMode?.('freeplay');
       useUIStore.setState({ matchMode: 'freeplay' });
+      useUIStore.getState().setOnlineSession({
+        isHosting: false,
+        roomId: '',
+        signalingConnected: false,
+        connectedPeers: [],
+        roomType: 'warmup',
+        isReady: false,
+      });
     },
     ...createOnlineBridgeHandlers(gameRuntime),
     onCameraChange: (cameraConfig) => {

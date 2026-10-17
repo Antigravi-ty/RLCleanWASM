@@ -279,19 +279,29 @@ export function restoreWasmSnapshotState(engine, buffer) {
   // Compact 424-float GameStateBufferPod fast-path (used by WebRTC & Replay RingBuffer)
   if (size <= engine.stateLen && size < fullSnapSize) {
     const copyLen = Math.min(size, engine.state.length);
-    engine.state.subarray(0, copyLen).set(buffer.subarray ? buffer.subarray(0, copyLen) : buffer.slice(0, copyLen));
+    const srcBuf = new Float32Array(copyLen);
+    srcBuf.set(buffer.subarray ? buffer.subarray(0, copyLen) : buffer.slice(0, copyLen));
+    engine.state.subarray(0, copyLen).set(srcBuf);
 
     if (engine.module && engine.statePtr) {
       if (typeof engine.module._physics_setBallState === 'function') {
+        engine.state
+          .subarray(SIM_OFFSETS.BALL, SIM_OFFSETS.BALL + BALL_STATE_STRIDE)
+          .set(srcBuf.subarray(SIM_OFFSETS.BALL, SIM_OFFSETS.BALL + BALL_STATE_STRIDE));
         engine.module._physics_setBallState(engine.statePtr + SIM_OFFSETS.BALL * 4);
       }
       const numCars = Math.min(
         MAX_CARS,
-        Math.max(engine.numCars || 0, Math.round(engine.state[SIM_OFFSETS.NUM_CARS] || 0))
+        Math.max(engine.numCars || 0, Math.round(srcBuf[SIM_OFFSETS.NUM_CARS] || 0))
       );
       if (typeof engine.module._physics_setCarState === 'function') {
         for (let c = 0; c < numCars; c++) {
           const carOffset = SIM_OFFSETS.CARS + c * CAR_STATE_STRIDE;
+          if (carOffset + CAR_STATE_STRIDE <= copyLen) {
+            engine.state
+              .subarray(carOffset, carOffset + CAR_STATE_STRIDE)
+              .set(srcBuf.subarray(carOffset, carOffset + CAR_STATE_STRIDE));
+          }
           engine.module._physics_setCarState(c, engine.statePtr + carOffset * 4);
         }
       }
@@ -306,7 +316,7 @@ export function restoreWasmSnapshotState(engine, buffer) {
         const heapU32 = engine.module.HEAPU32;
         const heapF32 = engine.module.HEAPF32;
         if (heapU32) {
-          const incomingTick = Math.max(0, Math.round(buffer[SIM_OFFSETS.TICK] || 0));
+          const incomingTick = Math.max(0, Math.round(srcBuf[SIM_OFFSETS.TICK] || 0));
           heapU32[wOffset] = incomingTick >>> 0;
           heapU32[wOffset + 1] = 0;
         }
@@ -314,9 +324,9 @@ export function restoreWasmSnapshotState(engine, buffer) {
         const padSnapBase = wOffset + 67;
         for (let p = 0; p < NUM_BOOST_PADS; p++) {
           const srcPadIdx = BOOST_PAD_STATES_OFFSET + p * BOOST_PAD_STATE_STRIDE;
-          if (srcPadIdx + 1 < size) {
-            const isActive = buffer[srcPadIdx] >= 0.5 ? 1 : 0;
-            const cooldown = buffer[srcPadIdx + 1];
+          if (srcPadIdx + 1 < copyLen) {
+            const isActive = srcBuf[srcPadIdx] >= 0.5 ? 1 : 0;
+            const cooldown = srcBuf[srcPadIdx + 1];
             if (heapU32) {
               heapU32[padSnapBase + p * 3] = isActive;
               if (isActive) heapU32[padSnapBase + p * 3 + 2] = 0;
@@ -325,7 +335,7 @@ export function restoreWasmSnapshotState(engine, buffer) {
           }
         }
         engine.module._physics_restoreState(engine.wasmStatePtr);
-        engine.state.subarray(0, copyLen).set(buffer.subarray ? buffer.subarray(0, copyLen) : buffer.slice(0, copyLen));
+        engine.state.subarray(0, copyLen).set(srcBuf);
       }
     }
     return true;

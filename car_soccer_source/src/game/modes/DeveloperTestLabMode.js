@@ -3,7 +3,7 @@
  * Standalone Developer Test Lab game mode ('dev-test-lab') providing 4 isolated, mutually-exclusive test benches:
  * 1. Bench 1 ('probes'): 2-Car Predictive & Non-Predictive Probes (Strictly Inside Arena)
  * 2. Bench 2 ('dual-world'): Dual-World Same-Map Ghost Sandbox
- * 3. Bench 3 ('tas-replay'): State Replay Scrubbing & Resume Sandbox (Hotkeys O / P / [ / ])
+ * 3. Bench 3 ('state-replay'): State Replay Scrubbing & Resume Sandbox (Hotkeys O / P / [ / ])
  * 4. Bench 4 ('incident-match'): 1:30 (90s) Incident, Overtime, Countdown, Speed Multiplier & Possession Match
  */
 
@@ -212,7 +212,7 @@ export class DeveloperTestLabMode extends BaseGameMode {
     if (tab !== 'dual-world' && this.ghostVisuals) {
       this.ghostVisuals.setVisible(false);
     }
-    if (tab !== 'tas-replay' && store.tasState !== 'idle' && store.tasState !== 'stopped') {
+    if (tab !== 'state-replay' && store.tasState !== 'idle' && store.tasState !== 'stopped') {
       store.updateLiveTelemetry({ tasState: 'stopped' });
     }
     if (tab !== 'incident-match') {
@@ -229,7 +229,7 @@ export class DeveloperTestLabMode extends BaseGameMode {
     } else if (tab === 'dual-world') {
       this._ensureSinglePlayerCarOnly();
       this._syncDualWorldConfiguration();
-    } else if (tab === 'tas-replay') {
+    } else if (tab === 'state-replay') {
       this._ensureSinglePlayerCarOnly();
     } else if (tab === 'incident-match') {
       this.startIncidentMatch(store.incidentOpponentMode);
@@ -371,7 +371,7 @@ export class DeveloperTestLabMode extends BaseGameMode {
     const activeTab = store.activeTab;
 
     if (
-      activeTab === 'tas-replay' &&
+      activeTab === 'state-replay' &&
       (store.tasState === 'rewinding' || store.tasState === 'forwarding' || store.tasState === 'paused-scrub')
     ) {
       if (store.tasState === 'rewinding' || store.tasState === 'forwarding') {

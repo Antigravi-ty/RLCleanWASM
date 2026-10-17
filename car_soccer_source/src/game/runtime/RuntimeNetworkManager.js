@@ -129,12 +129,17 @@ export class RuntimeNetworkManager {
       r.networkReconciler = null;
     }
     r.playerCarIndex = 0;
+    if (r.arena) {
+      r.arena.playerCarIndex = 0;
+      r.arena.isLobbyMode = false;
+    }
   }
 
   async stopOnlineServer() {
     const r = this.runtime;
     this.cleanupOnlineSession();
     if (r.arena?.cars) {
+      if (r.arena.cars[0]) r.arena.cars[0].visible = true;
       for (let i = 1; i < r.arena.cars.length; i++) {
         if (r.arena.cars[i]) r.arena.cars[i].visible = false;
       }
@@ -142,14 +147,28 @@ export class RuntimeNetworkManager {
     if (r.physics && r.physics.numCars > 1) {
       r.physics.configureCars(r.selectedPreset || 'octane', false, 0);
     }
+    const unlimited = useUIStore?.getState?.()?.gameplay?.unlimitedBoost ?? (r.trainingOptions?.boostOption === 'unlimited');
+    r.physics?.setUnlimitedBoost?.(unlimited);
+    if (r.match?.state) {
+      r.match.state.mode = 'freeplay';
+      r.match.state.paused = false;
+      r.match.state.phase = 'freeplay';
+      r.match.state.overtime = false;
+      r.match.state.winner = null;
+      r.match.state.countdown = 0;
+    }
+    r.modeManager?.setMode?.('freeplay');
     r.resetKickoff();
+    r.interpolator?.sync?.(performance.now());
     if (useUIStore && typeof useUIStore.getState === 'function') {
       useUIStore.getState().setMatchMode('freeplay');
       useUIStore.getState().setOnlineSession({
         isHosting: false,
         roomId: '',
         signalingConnected: false,
-        connectedPeers: []
+        connectedPeers: [],
+        roomType: 'warmup',
+        isReady: false
       });
     }
   }

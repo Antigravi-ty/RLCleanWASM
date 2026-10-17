@@ -1,14 +1,16 @@
 import { create } from 'zustand';
 
-export type DevTestLabTab = 'probes' | 'dual-world' | 'tas-replay' | 'incident-match';
+export type DevTestLabTab = 'probes' | 'dual-world' | 'state-replay' | 'incident-match';
 export type ProbePlacementMode = 'inside' | 'outside';
 export type IncidentOpponentMode = 'stationary' | 'nexto';
 export type IncidentControlledCar = 0 | 1; // 0 = Blue Car 0, 1 = Orange Car 1
 export type IncidentSpeedMultiplier = 100 | 200 | 300 | 400 | 500;
-export type TasFlowPreset = '100' | '50' | '25' | '75' | 'custom';
-export type TasRecorderState = 'idle' | 'recording' | 'stopped' | 'rewinding' | 'forwarding' | 'paused-scrub';
+export type ReplayFlowPreset = '100' | '50' | '25' | '75' | 'custom';
+export type StateReplayRecorderState = 'idle' | 'recording' | 'stopped' | 'rewinding' | 'forwarding' | 'paused-scrub';
+export type TasFlowPreset = ReplayFlowPreset;
+export type TasRecorderState = StateReplayRecorderState;
 
-export function resolveTasRateFromPreset(preset: TasFlowPreset, customPct: number): number {
+export function resolveTasRateFromPreset(preset: ReplayFlowPreset, customPct: number): number {
   switch (preset) {
     case '100':
       return 100;
