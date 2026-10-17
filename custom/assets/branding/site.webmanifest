@@ -1,0 +1,28 @@
+{
+  "name": "Car Soccer",
+  "short_name": "Car Soccer",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#09090b",
+  "theme_color": "#09090b",
+  "icons": [
+    {
+      "src": "/custom/assets/branding/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/custom/assets/branding/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/custom/assets/branding/antigravity-logo.png",
+      "sizes": "276x276",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

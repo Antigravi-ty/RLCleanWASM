@@ -1,0 +1,81 @@
+{
+  "fastDiffuse": false,
+  "ground": {
+    "groundColor": "#18441c",
+    "lineColor": "#e1e6eb",
+    "roughness": 1,
+    "metalness": 0,
+    "scaleX": 1.015,
+    "scaleY": 1.037,
+    "offsetX": -0.0075,
+    "offsetY": -0.0176,
+    "linkScale": false,
+    "visible": true,
+    "wireframe": false,
+    "magFilter": "linear",
+    "anisotropy": 16,
+    "lineThreshold": 0.0921,
+    "lineSmoothness": 0.0364
+  },
+  "ramps": {
+    "color": "#45382a",
+    "roughness": 1,
+    "metalness": 0,
+    "visible": true,
+    "wireframe": false
+  },
+  "rampsTrim": {
+    "color": "#595959",
+    "roughness": 1,
+    "metalness": 0,
+    "visible": true,
+    "wireframe": false
+  },
+  "wallPosts": {
+    "color": "#492f00",
+    "roughness": 1,
+    "metalness": 0,
+    "visible": true,
+    "wireframe": false
+  },
+  "goalFrame": {
+    "color": "#444444",
+    "roughness": 1,
+    "metalness": 0,
+    "visible": true,
+    "wireframe": false
+  },
+  "goalPosts": {
+    "color": "#b2b2b2",
+    "roughness": 0.2,
+    "metalness": 1,
+    "visible": true,
+    "wireframe": false
+  },
+  "walls": {
+    "color": "#26a6d9",
+    "opacity": 0,
+    "roughness": 0,
+    "metalness": 0,
+    "visible": true,
+    "wireframe": false
+  },
+  "goalNet": {
+    "color": "#412a00",
+    "opacity": 1,
+    "roughness": 1,
+    "metalness": 0,
+    "visible": true,
+    "wireframe": false
+  },
+  "hexes": {
+    "color": "#ffffff",
+    "opacity": 0.03,
+    "roughness": 0.5,
+    "metalness": 0,
+    "emissive": "#ffffff",
+    "emissiveIntensity": 0,
+    "visible": true,
+    "wireframe": false
+  }
+}
