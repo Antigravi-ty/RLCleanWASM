@@ -150,8 +150,8 @@ export const useQuickNotificationStore = create<QuickNotificationStore>((set, ge
     }));
   },
 
-  pushOngoingNotification: (config: QuickNotificationPushOptions) => {
-    validateNotificationOptions(config);
+  pushOngoingNotification: (config: QuickNotificationOngoingPushOptions) => {
+    validateNotificationOptions({ ...config, type: config.type || 'ongoing' });
 
     const taskId = config.id || `ongoing-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const currentTasks = get().ongoingTasks;

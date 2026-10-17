@@ -9,7 +9,7 @@
  * - Zero fallback architecture.
  */
 
-import { verifyCameraMicrokernelIntegrity } from '../camera/exempt_pov_microkernel/index.js';
+import { DualProgressUIAdapter } from '../loader/DualProgressUIAdapter.js';
 
 export const DEFAULT_APP_ICON_URL = '/assets/app-icon-512-DPODCpjJ.png';
 
@@ -17,7 +17,8 @@ export const DEFAULT_APP_ICON_URL = '/assets/app-icon-512-DPODCpjJ.png';
  * Creates the stylized brand loading overlay DOM inside the host container.
  * @param {HTMLElement} container Host DOM container (#app)
  * @param {string} [iconUrl] Brand emblem image URL
- * @returns {{ loadingElement: HTMLElement, labelElement: HTMLElement, noteElement: HTMLElement } | null}\n */
+ * @returns {{ loadingElement: HTMLElement, labelElement: HTMLElement, noteElement: HTMLElement } | null}
+ */
 export function renderLoadingScreen(container, iconUrl = DEFAULT_APP_ICON_URL) {
   if (!container) return null;
 
@@ -223,24 +224,23 @@ export class GameBootstrap {
   async start() {
     this.prepareDOM();
 
-    let uiAdapter = null;
+    // 1. Mount or attach dual progress UI adapter & MinimumProgressLoader FIRST
+    const uiAdapter = new DualProgressUIAdapter(this.container, this.options.loader || null);
+    if (this.customProgressBar) {
+      uiAdapter.registerCustomUI(this.customProgressBar);
+    }
+
     try {
-      const {
-        buildEngineLoadingPipeline,
-        ConsoleProgressObserver,
-        DualProgressUIAdapter
-      } = await import('../loader/index.js');
+      const [
+        { buildEngineLoadingPipeline, ConsoleProgressObserver, startBackgroundAssetPipeline },
+        { GameRuntime }
+      ] = await Promise.all([
+        import('../loader/index.js'),
+        import('./GameRuntime.js')
+      ]);
 
-      // 1. Mount dual progress UI adapter & MinimumProgressLoader immediately
-      uiAdapter = new DualProgressUIAdapter(this.container);
-      if (this.customProgressBar) {
-        uiAdapter.registerCustomUI(this.customProgressBar);
-      }
-
-      // 2. Load runtime and orchestrator
-      const { GameRuntime } = await import('./GameRuntime.js');
+      // 2. Instantiate runtime and orchestrator
       this.runtime = new GameRuntime(this.container, this.options);
-
       const orchestrator = buildEngineLoadingPipeline(this.runtime, this.options);
 
       // 3. Structured console telemetry (Step X of Y, Stage, Duration)
@@ -255,21 +255,18 @@ export class GameBootstrap {
       console.log('[Loading] Training Mode Essential Resources ready — Player can now play.');
 
       // 5. Trigger background asset downloads asynchronously without blocking gameplay
-      const { startBackgroundAssetPipeline } = await import('../loader/index.js');
       startBackgroundAssetPipeline(this.runtime).catch((err) => {
         console.warn('[Loading] Background asset pipeline unhandled rejection:', err);
       });
 
       return this.runtime;
     } catch (err) {
-      if (uiAdapter) {
-        uiAdapter.onError({
-          taskId: 'bootstrap',
-          taskName: 'Engine Lifecycle Bootstrap',
-          error: err,
-          isCritical: true
-        });
-      }
+      uiAdapter.onError({
+        taskId: 'bootstrap',
+        taskName: 'Engine Lifecycle Bootstrap',
+        error: err,
+        isCritical: true
+      });
       handleBootstrapError(err, this.loadingRefs);
       throw err;
     }

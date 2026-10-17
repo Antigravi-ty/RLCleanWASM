@@ -361,7 +361,8 @@ export const SURFACE_SUBTYPES = Object.freeze({
 export const PHYSICS_EVENT_TYPES = Object.freeze({
   ...INCIDENT_EVENT_TYPES,
   ...SIGNAL_EVENT_TYPES,
-  CAR_DEMO: 0x03
+  CAR_DEMO: 0x03,
+  CAR_ACTION: 0x3E
 });
 
 export const CAR_ACTION_SUBTYPES = Object.freeze({

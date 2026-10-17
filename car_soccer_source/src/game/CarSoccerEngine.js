@@ -9,22 +9,6 @@
  * - Subsystem coordinator and lifecycle management.
  */
 
-// --- Runtime Environment Compatibility ---
-import * as THREE from 'three';
-import { applyThreeMonkeyPatches } from '../utils/ThreeMonkeyPatches.js';
-
-applyThreeMonkeyPatches(THREE);
-
-// --- Subsystem Integrations ---
-import { CameraManager } from '../camera/index.js';
-import {
-  createGameCarModel,
-  createClassicSoccerBall,
-  applyVehicleMaterials,
-  createCarPaintMaterial
-} from '../entities/index.js';
-
-// --- Lifecycle Bootstrap & Loading Screen ---
 import {
   GameBootstrap,
   bootstrapGameEngine
@@ -35,26 +19,73 @@ import {
 // =========================================================================
 
 let activeGameRuntime = null;
+let activeBootstrapPromise = null;
 
 /**
  * Modern bootstrap entry function.
- * Starts the application lifecycle, instantiates GameRuntime, and begins rendering.
+ * Dynamically loads 3D subsystems after the minimal loading screen is mounted,
+ * instantiates GameRuntime, and begins rendering.
+ * @param {object} [options={}]
  * @returns {Promise<GameRuntime>}
  */
-async function bootstrapCarSoccerEngine() {
-  const host = typeof document !== 'undefined' ? document.querySelector('#app') : null;
-  activeGameRuntime = await bootstrapGameEngine(host, {
-    carLoaders: {
-      createGameCarModel,
-      createTruncatedIcosahedronBall: createClassicSoccerBall,
-      applyVehicleMaterials,
-      createCarPaintMaterial
-    },
-    CameraControllerClass: CameraManager
-  });
-  return activeGameRuntime;
-}
+async function bootstrapCarSoccerEngine(options = {}) {
+  if (activeGameRuntime) {
+    return activeGameRuntime;
+  }
+  if (activeBootstrapPromise) {
+    return activeBootstrapPromise;
+  }
 
+  activeBootstrapPromise = (async () => {
+    const host = options.container || (typeof document !== 'undefined' ? document.querySelector('#app') : null);
+    const loader = options.loader || host?.__minimumProgressLoader || null;
+
+    if (loader) {
+      loader.onTaskProgress({
+        overallPercent: 4,
+        detail: 'Initializing Three.js WebGL core & entity factories...'
+      });
+    }
+
+    const [
+      THREE,
+      { applyThreeMonkeyPatches },
+      { CameraManager },
+      {
+        createGameCarModel,
+        createClassicSoccerBall,
+        applyVehicleMaterials,
+        createCarPaintMaterial
+      }
+    ] = await Promise.all([
+      import('three'),
+      import('../utils/ThreeMonkeyPatches.js'),
+      import('../camera/index.js'),
+      import('../entities/index.js')
+    ]);
+
+    applyThreeMonkeyPatches(THREE);
+
+    activeGameRuntime = await bootstrapGameEngine(host, {
+      ...options,
+      loader,
+      carLoaders: {
+        createGameCarModel,
+        createTruncatedIcosahedronBall: createClassicSoccerBall,
+        applyVehicleMaterials,
+        createCarPaintMaterial
+      },
+      CameraControllerClass: CameraManager
+    });
+    return activeGameRuntime;
+  })();
+
+  try {
+    return await activeBootstrapPromise;
+  } finally {
+    activeBootstrapPromise = null;
+  }
+}
 
 /**
  * Modern render loop step function.
@@ -67,7 +98,6 @@ function renderGameFrame(timestamp) {
   }
 }
 
-
 /**
  * Destroys the active GameRuntime session and frees all WebGL/DOM resources.
  */
@@ -75,16 +105,6 @@ function destroyCarSoccerEngine() {
   if (activeGameRuntime) {
     activeGameRuntime.destroy();
     activeGameRuntime = null;
-  }
-}
-
-// Auto-bootstrap in browser environment if #app container is present
-if (typeof document !== 'undefined' && typeof document.querySelector === 'function') {
-  const appContainer = document.querySelector('#app');
-  if (appContainer) {
-    bootstrapCarSoccerEngine().catch((err) => {
-      console.error('[CarSoccerEngine] Auto-bootstrap failed:', err);
-    });
   }
 }
 
@@ -96,3 +116,4 @@ export {
   GameBootstrap,
   bootstrapGameEngine
 };
+

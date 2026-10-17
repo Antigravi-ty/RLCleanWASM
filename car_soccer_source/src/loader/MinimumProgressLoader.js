@@ -71,15 +71,19 @@ export class MinimumProgressLoader {
 
     this._injectStyles();
 
-    const loaderEl = document.createElement('div');
-    loaderEl.id = 'minimum-engine-loader';
-    loaderEl.className = 'hig-loader-shell';
-    loaderEl.setAttribute('data-ui-layer', 'minimum-loading-screen');
-    loaderEl.innerHTML = MINIMUM_LOADER_HTML;
+    let loaderEl = this.container.querySelector('#minimum-engine-loader');
+    if (!loaderEl) {
+      loaderEl = document.createElement('div');
+      loaderEl.id = 'minimum-engine-loader';
+      loaderEl.className = 'hig-loader-shell';
+      loaderEl.setAttribute('data-ui-layer', 'minimum-loading-screen');
+      loaderEl.innerHTML = MINIMUM_LOADER_HTML;
+      this.container.appendChild(loaderEl);
+    }
 
-    this.container.appendChild(loaderEl);
     this.element = loaderEl;
     this.isMounted = true;
+    this.container.__minimumProgressLoader = this;
 
     this.refs = {
       stageIndicator: loaderEl.querySelector('#hig-stage-indicator'),
@@ -295,6 +299,9 @@ export class MinimumProgressLoader {
   destroy() {
     if (this.element && this.element.parentNode) {
       this.element.parentNode.removeChild(this.element);
+    }
+    if (this.container && this.container.__minimumProgressLoader === this) {
+      delete this.container.__minimumProgressLoader;
     }
     this.element = null;
     this.refs = {};

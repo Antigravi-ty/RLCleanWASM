@@ -26,7 +26,6 @@ export function createRealisticCarModel(teamColor, options = {}) {
     DoubleSide,
     MathUtils
   } = THREE;
-  const setShadowFlags = applyArcadeCelShading;
 
   const dim = REALISTIC_DIMENSIONS;
   const cfg = {

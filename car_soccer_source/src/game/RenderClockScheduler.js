@@ -173,6 +173,13 @@ export class RenderClockScheduler {
   }
 
   /**
+   * Stops the scheduler and releases frame timers/fences.
+   */
+  stop() {
+    this.dispose();
+  }
+
+  /**
    * Whether scheduler is actively running and context is alive
    * @returns {boolean}
    */

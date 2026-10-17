@@ -18,9 +18,12 @@ export * from "./CarColorConstants.js";
 // Explicit disambiguation for star-exported symbols shared across submodules
 export {
   OCTANE_BOOST_OUTLETS,
-  FLAT_CAR_BOOST_OUTLETS
+  FLAT_CAR_BOOST_OUTLETS,
+  DEFAULT_TEAM_COLORS
 } from "./VehicleAssembly.js";
 
 export {
   updateSuspensionUnitSpring
 } from "./ArenaWorld.js";
+
+

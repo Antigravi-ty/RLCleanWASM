@@ -23,7 +23,6 @@ export function createRealisticCarGimbals() {
     Vector3,
     DoubleSide
   } = THREE;
-  const setShadowFlags = applyArcadeCelShading;
 
   const root = new Group();
   const visual = new Group();

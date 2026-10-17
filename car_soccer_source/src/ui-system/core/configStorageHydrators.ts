@@ -36,6 +36,16 @@ import {
   COLOR_SLOT_HEX_MAP,
 } from './configTypes.ts';
 
+export {
+  STORAGE_KEY_DISPLAY_SETTINGS,
+  MATERIALS_STORAGE_KEY,
+  TRAJECTORY_STORAGE_KEY,
+  THEME_STORAGE_KEY,
+  COLOR_PREFS_KEY,
+  LEGACY_PREFERRED_COLOR_KEY,
+  COLOR_SLOT_HEX_MAP,
+};
+
 export const safeStorage = {
   get: (k: string, fallback: string | null = null): string | null => {
     try {

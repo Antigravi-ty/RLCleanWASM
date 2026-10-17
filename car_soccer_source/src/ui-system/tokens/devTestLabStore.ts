@@ -90,6 +90,7 @@ export interface DevTestLabState {
   setTasCustomFlowPct: (pct: number) => void;
   setIncidentOpponentMode: (mode: IncidentOpponentMode) => void;
   setIncidentControlledCar: (carIdx: IncidentControlledCar) => void;
+  switchIncidentControlledCar: () => void;
   setIncidentSpeedMultiplier: (mult: IncidentSpeedMultiplier) => void;
   setIncidentDisableGoalReplay: (disable: boolean) => void;
   updateLiveTelemetry: (patch: Partial<DevTestLabState>) => void;
@@ -251,6 +252,14 @@ export const useDevTestLabStore = create<DevTestLabState>((set, get) => ({
     set({ incidentControlledCar });
     if (get().activeTab === 'incident-match') {
       get().runtimeHandlers.onIncidentControlledCarChange?.(incidentControlledCar);
+    }
+  },
+
+  switchIncidentControlledCar: () => {
+    const next: IncidentControlledCar = get().incidentControlledCar === 0 ? 1 : 0;
+    set({ incidentControlledCar: next });
+    if (get().activeTab === 'incident-match') {
+      get().runtimeHandlers.onIncidentControlledCarChange?.(next);
     }
   },
 

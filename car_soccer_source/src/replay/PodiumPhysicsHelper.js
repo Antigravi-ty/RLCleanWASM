@@ -108,7 +108,7 @@ export function applyPodiumFormationToEngine(engine, winningTeam = 0) {
     // Zero linear & angular velocities, full boost, grounded
     carState[CAR_STATE_OFFSETS.BOOST] = 100.0;
     carState[CAR_STATE_OFFSETS.ON_GROUND] = 1.0;
-    carState[CAR_STATE_OFFSETS.HAS_FLIP] = 1.0;
+    carState[CAR_STATE_OFFSETS.HAS_FLIP_OR_JUMP] = 1.0;
 
     if (typeof engine.setCarState === 'function') {
       engine.setCarState(c, carState);

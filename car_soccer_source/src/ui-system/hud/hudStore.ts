@@ -23,7 +23,7 @@ export interface HudStoreState {
   isPaused?: boolean;
   kickoffCountdown: number; // 0: inactive, 1..3: countdown ticks
   matchPhase: 'warmup' | 'prepare' | 'kickoff' | 'playing' | 'goal' | 'replay' | 'paused' | 'ended' | 'podium' | 'freeplay';
-  winner?: number | null; // 0: Blue, 1: Orange, 2: Draw
+  winner?: number | string | null; // 0/'BLUE': Blue, 1/'ORANGE': Orange, 2/'DRAW': Draw
   winReason?: string | null;
 
   // Replay Timeline Scrubbing State
@@ -64,7 +64,7 @@ export interface HudStoreState {
     isPaused?: boolean;
     kickoffCountdown: number;
     matchPhase: 'warmup' | 'prepare' | 'kickoff' | 'playing' | 'goal' | 'replay' | 'paused' | 'ended' | 'podium' | 'freeplay';
-    winner?: number | null;
+    winner?: number | string | null;
     winReason?: string | null;
   }>) => void;
 }

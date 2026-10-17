@@ -1,6 +1,6 @@
 import { MATCH_SIGNALS, CLIENT_COMMAND_TYPES } from '../../network/GlobalPayloadCodec.js';
 import { gameAudio } from '../../audio/AudioArchitecture.js';
-import { hudStore } from '../../ui-system/index';
+import { useUIStore, hudStore } from '../../ui-system/index';
 import { eventStreamStore } from '../../ui-system/tokens/eventStreamStore';
 import {
   WIN_REASON_LABELS,

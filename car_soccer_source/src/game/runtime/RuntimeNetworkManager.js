@@ -3,6 +3,10 @@ import { PredictionReconciler } from '../../network/PredictionReconciler.js';
 import { CLIENT_COMMAND_TYPES } from '../../network/GlobalPayloadCodec.js';
 import { packLoadoutCommandParam1 } from '../../network/MatchRosterCoordinator.js';
 import { LobbyGhostCarCoordinator, DEFAULT_GHOST_OPACITY } from '../../network/LobbyGhostCarCoordinator.js';
+import {
+  sampleDiagnosticFleetTelemetry as sampleDiagnosticsFleetTelemetry,
+  DEFAULT_DIAGNOSTIC_FLEET
+} from '../../network/DiagnosticsTestVehicles.js';
 import { useUIStore, networkDiagnosticsStore } from '../../ui-system/index';
 import { bindReconcilerSignals, resetRuntimeReconcilerSignalState } from './RuntimeReconcilerSignalHandler.js';
 import {
@@ -483,7 +487,7 @@ export class RuntimeNetworkManager {
   sampleDiagnosticFleetTelemetry() {
     if (!this.runtime?.physics) return [];
     const serverStateBuf = this.runtime.authoritativeServer?.fallbackSim?.state || null;
-    return sampleDiagnosticFleetTelemetry(this.runtime.physics, serverStateBuf, DEFAULT_DIAGNOSTIC_FLEET);
+    return sampleDiagnosticsFleetTelemetry(this.runtime.physics, serverStateBuf, DEFAULT_DIAGNOSTIC_FLEET);
   }
 
   async enableDeterminismHarness(showHUD = true) {

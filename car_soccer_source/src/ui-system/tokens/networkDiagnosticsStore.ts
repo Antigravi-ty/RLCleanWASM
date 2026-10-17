@@ -36,6 +36,7 @@ export interface NetworkMetrics {
   corrections: number;
   packetLossPct: number;
   extraLatencyMs: number;
+  burstDropEnabled: boolean;
   burstDropCount: number;
   burstPeriodMs: number;
   burstDurationMs: number;

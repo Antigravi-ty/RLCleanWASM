@@ -162,7 +162,7 @@ export class PredictionReconciler {
     }
     this.metrics.rttMs = rawRtt;
     this.metrics.enableSmoothing = this.enableSmoothing;
-    this.metrics.rollbackWindow = this.history?.length || 0;
+    this.metrics.rollbackWindow = this.inputHistory?.length || 0;
     if (this.onMetricsUpdated) {
       try {
         this.onMetricsUpdated(this.metrics);

@@ -15,11 +15,12 @@ import { MinimumProgressLoader } from './MinimumProgressLoader.js';
 export class DualProgressUIAdapter {
   /**
    * @param {HTMLElement} [container] Host DOM container (#app)
+   * @param {MinimumProgressLoader} [existingLoader] Pre-mounted loader instance
    */
-  constructor(container = null) {
+  constructor(container = null, existingLoader = null) {
     this.container = container || (typeof document !== 'undefined' ? document.querySelector('#app') : null);
     this.customUI = null;
-    this.loader = new MinimumProgressLoader(this.container);
+    this.loader = existingLoader || this.container?.__minimumProgressLoader || new MinimumProgressLoader(this.container);
     this.loader.mount();
   }
 

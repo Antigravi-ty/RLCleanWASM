@@ -12,9 +12,8 @@
 
 import { LoadingOrchestrator } from './LoadingOrchestrator.js';
 import { LoadingTask } from './LoadingTask.js';
-import { verifyCameraMicrokernelIntegrity } from '../camera/exempt_pov_microkernel/index.js';
+import { verifyCameraMicrokernelIntegrity } from '../camera/exempt_pov_microkernel/CameraMicrokernel.js';
 import { auditRequiredAssets, formatMissingAssetsHtml } from '../game/AssetDiagnostics.js';
-import { useQuickNotificationStore } from '../ui-system/tokens/quickNotificationStore';
 
 /**
  * Builds and configures the standard game engine loading pipeline.
@@ -248,7 +247,13 @@ export function buildEngineLoadingPipeline(runtime, options = {}) {
 export async function startBackgroundAssetPipeline(runtime, onProgress = null) {
   console.log('[Loading] ❯ Background asset pipeline started for non-essential subsystems...');
 
-  const notifyStore = typeof useQuickNotificationStore !== 'undefined' ? useQuickNotificationStore.getState() : null;
+  let notifyStore = null;
+  try {
+    const { useQuickNotificationStore } = await import('../ui-system/tokens/quickNotificationStore');
+    notifyStore = useQuickNotificationStore.getState();
+  } catch (err) {
+    console.warn('[Loading] Optional quick notification store unavailable:', err);
+  }
   const taskId = 'background-asset-pipeline';
   if (notifyStore) {
     notifyStore.pushOngoingNotification({

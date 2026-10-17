@@ -176,7 +176,7 @@ export function routeProtocolMessageInWorker(workerCtx, msg) {
         ? payload.acks
         : (typeof payload.signalId === 'number' ? [{ signalId: payload.signalId, signalType: payload.signalType }] : []);
       if (acks.length > 0) {
-        sessionManager?.processSignalAcks?.(sessionId, acks, matchManager?.getExpectedAckPeerIds?.());
+        sessionManager?.recordClientSignalAcks?.(sessionId, acks);
         matchManager?.handleClientSignalAcks?.(sessionId, acks);
       }
       return true;
