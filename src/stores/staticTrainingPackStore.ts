@@ -4,21 +4,34 @@ import {
   type StaticTrainingShotItem,
   type EditSubMode,
   EDIT_SUB_MODES_ORDER,
+  MAX_SHOTS_PER_PACK,
   generateUUID,
   createDefaultShotItem,
   cloneShotItem,
+  areShotItemsEqual,
+  areShotListsEqual,
   listStaticTrainingPacks,
   loadStaticTrainingPackByUuid,
   saveStaticTrainingPackFull,
   saveSingleStaticTrainingShotItem,
   deleteStaticTrainingPackByUuid,
+  saveEditWorkspacePackFull,
+  saveSingleEditWorkspaceShotItem,
+  clearEditWorkspaceByUuid,
   exportStaticTrainingPackRCSPack,
   importStaticTrainingPackFromFile,
   exportSingleShotItemToJson,
   parseSingleShotItemFromJsonFile,
 } from '../training/StaticTrainingPackStorage';
 
-export type { StaticTrainingPackMetadata, StaticTrainingShotItem, EditSubMode };
+export {
+  type StaticTrainingPackMetadata,
+  type StaticTrainingShotItem,
+  type EditSubMode,
+  MAX_SHOTS_PER_PACK,
+  areShotItemsEqual,
+  areShotListsEqual,
+};
 export type StaticPackDownCounterOption = 1 | 2 | 3;
 export type StaticPackSessionMode = 'browse' | 'play' | 'edit';
 
@@ -33,8 +46,7 @@ export interface ActiveStaticTrainingPackBundle {
 
 /**
  * Fast in-memory variable holding the active shot item during Item Edit Mode.
- * Mutated directly at 60-120Hz during keyboard/mouse manipulation and only persisted
- * to IndexedDB upon exiting Item Edit Mode.
+ * Mutated directly at 60-120Hz during keyboard/mouse manipulation.
  */
 let activeEditItemVariable: StaticTrainingShotItem | null = null;
 
@@ -57,14 +69,16 @@ export function mutateActiveEditItemVariable(
     activeEditItemVariable = cloneShotItem(fallback, store.currentShotIndex);
   }
   updater(activeEditItemVariable);
+  const clonedDraft = cloneShotItem(activeEditItemVariable, store.currentShotIndex);
+  activeEditItemVariable = clonedDraft;
   useStaticTrainingPackStore.setState((s) => ({
     editVarVersion: s.editVarVersion + 1,
-    activeEditItemDraft: activeEditItemVariable,
+    activeEditItemDraft: clonedDraft,
   }));
   const handlers = store.runtimeHandlers;
-  handlers.onEditVariableMutated?.(activeEditItemVariable);
-  handlers.onSyncEditDraftToArena?.(activeEditItemVariable);
-  return activeEditItemVariable;
+  handlers.onEditVariableMutated?.(clonedDraft);
+  handlers.onSyncEditDraftToArena?.(clonedDraft);
+  return clonedDraft;
 }
 
 function buildActivePackBundle(
@@ -103,9 +117,10 @@ export interface StaticTrainingPackStoreState {
   sessionMode: StaticPackSessionMode;
   activePack: ActiveStaticTrainingPackBundle | null;
   activeItems: StaticTrainingShotItem[];
+  committedSessionItems: StaticTrainingShotItem[];
   currentShotIndex: number;
 
-  // Item Edit state (in-memory draft variable, committed to IndexedDB on exit)
+  // Item Edit state (when true, right-side Edit Shot panel is open for currentShotIndex)
   isEditingItem: boolean;
   activeEditItemDraft: StaticTrainingShotItem | null;
   editSubMode: EditSubMode;
@@ -116,13 +131,15 @@ export interface StaticTrainingPackStoreState {
   downCounterValue: StaticPackDownCounterOption;
   downCounterSeconds: StaticPackDownCounterOption;
 
-  // Live Play Telemetry
+  // Live Play & Edit Test Telemetry
   remainingTimeoutSec: number;
   activeCountdownSec: number;
   isShotLaunched: boolean;
   isOvertimeWaitGround: boolean;
   isReplayActive: boolean;
   replayType: 'goal' | 'expire' | null;
+  isFreeCamTrajectoryTesting: boolean;
+  isTestingSingleShot: boolean;
 
   runtimeHandlers: StaticTrainingPackRuntimeHandlers;
 
@@ -137,20 +154,29 @@ export interface StaticTrainingPackStoreState {
   exportPackRCS: (uuid?: string) => Promise<string | null>;
   importPackRCS: (file: File) => Promise<StaticTrainingPackMetadata>;
 
-  // Session Mode & Shot Navigation
+  // Session Mode & Edit Workspace Lifecycle
   setSessionMode: (mode: StaticPackSessionMode) => void;
+  beginEditSession: (uuid: string) => Promise<void>;
+  saveCurrentShotToEditWorkspace: () => Promise<void>;
+  deselectEditShot: () => Promise<void>;
+  isCurrentShotDirty: () => boolean;
+  hasUnsavedEditSessionChanges: () => boolean;
+  commitEditSessionToMainDb: () => Promise<void>;
+  discardEditSessionChanges: () => Promise<void>;
+
+  // Shot Navigation
   setCurrentShotIndex: (index: number) => void;
   nextShot: () => void;
   prevShot: () => void;
   resetCurrentShot: () => void;
 
-  // Shot List Management
+  // Shot List Management (operates on Edit-Mode IndexedDB during Edit Session, max 99 shots)
   addNewShot: () => Promise<void>;
   duplicateShot: (index: number) => Promise<void>;
   deleteShot: (index: number) => Promise<void>;
   reorderShot: (fromIndex: number, toIndex: number) => Promise<void>;
 
-  // Item Edit Mode (fast in-memory variable -> IndexedDB on exit)
+  // Item Edit Mode (selects a shot in the Edit Session)
   enterItemEditMode: (index?: number) => void;
   exitItemEditModeAndSave: () => Promise<void>;
   exportSingleShotJson: (index?: number) => string | null;
@@ -171,6 +197,8 @@ export interface StaticTrainingPackStoreState {
       isOvertimeWaitGround: boolean;
       isReplayActive: boolean;
       replayType: 'goal' | 'expire' | null;
+      isFreeCamTrajectoryTesting: boolean;
+      isTestingSingleShot: boolean;
     }>
   ) => void;
   setRuntimeHandlers: (handlers: Partial<StaticTrainingPackRuntimeHandlers>) => void;
@@ -185,6 +213,7 @@ export const useStaticTrainingPackStore = create<StaticTrainingPackStoreState>((
   sessionMode: 'play',
   activePack: null,
   activeItems: [],
+  committedSessionItems: [],
   currentShotIndex: 0,
 
   isEditingItem: false,
@@ -202,6 +231,8 @@ export const useStaticTrainingPackStore = create<StaticTrainingPackStoreState>((
   isOvertimeWaitGround: false,
   isReplayActive: false,
   replayType: null,
+  isFreeCamTrajectoryTesting: false,
+  isTestingSingleShot: false,
 
   runtimeHandlers: {},
 
@@ -234,6 +265,7 @@ export const useStaticTrainingPackStore = create<StaticTrainingPackStoreState>((
         selectedPackUuid: validSelected,
         activePack,
         activeItems,
+        committedSessionItems: activeItems.map((it, idx) => cloneShotItem(it, idx)),
       });
     } catch (err) {
       console.error('[staticTrainingPackStore] Failed to init packs:', err);
@@ -242,9 +274,6 @@ export const useStaticTrainingPackStore = create<StaticTrainingPackStoreState>((
   },
 
   selectPack: async (uuid: string) => {
-    if (get().isEditingItem) {
-      await get().exitItemEditModeAndSave();
-    }
     const loaded = await loadStaticTrainingPackByUuid(uuid);
     const bundle = buildActivePackBundle(loaded.metadata, loaded.items);
     activeEditItemVariable = null;
@@ -252,16 +281,151 @@ export const useStaticTrainingPackStore = create<StaticTrainingPackStoreState>((
       selectedPackUuid: uuid,
       activePack: bundle,
       activeItems: loaded.items,
+      committedSessionItems: loaded.items.map((it, idx) => cloneShotItem(it, idx)),
       currentShotIndex: 0,
       isEditingItem: false,
       activeEditItemDraft: null,
+      isFreeCamTrajectoryTesting: false,
+      isTestingSingleShot: false,
     });
   },
 
-  createPack: async (title: string, description: string) => {
-    if (get().isEditingItem) {
-      await get().exitItemEditModeAndSave();
+  beginEditSession: async (uuid: string) => {
+    const loaded = await loadStaticTrainingPackByUuid(uuid);
+    if (!loaded.metadata) return;
+    await saveEditWorkspacePackFull(loaded.metadata, loaded.items);
+    const bundle = buildActivePackBundle(loaded.metadata, loaded.items);
+    activeEditItemVariable = null;
+    set({
+      selectedPackUuid: uuid,
+      sessionMode: 'edit',
+      activePack: bundle,
+      activeItems: loaded.items.map((it, idx) => cloneShotItem(it, idx)),
+      committedSessionItems: loaded.items.map((it, idx) => cloneShotItem(it, idx)),
+      currentShotIndex: 0,
+      isEditingItem: false,
+      activeEditItemDraft: null,
+      isFreeCamTrajectoryTesting: false,
+      isTestingSingleShot: false,
+    });
+    get().runtimeHandlers.onSessionModeChanged?.('edit');
+  },
+
+  saveCurrentShotToEditWorkspace: async () => {
+    const { activePack, activeItems, currentShotIndex, isEditingItem } = get();
+    const draft = activeEditItemVariable || get().activeEditItemDraft;
+    if (!isEditingItem || !activePack || !draft) return;
+
+    const idx = Math.max(0, Math.min(activeItems.length - 1, currentShotIndex));
+    const savedShot = cloneShotItem(draft, idx);
+    activeEditItemVariable = cloneShotItem(savedShot, idx);
+    const nextItems = activeItems.map((it, i) => (i === idx ? savedShot : it));
+    const updatedMeta: StaticTrainingPackMetadata = {
+      ...activePack.metadata,
+      itemCount: nextItems.length,
+      updatedAt: Date.now(),
+    };
+
+    await saveSingleEditWorkspaceShotItem(activePack.uuid, idx, savedShot, updatedMeta);
+    const bundle = buildActivePackBundle(updatedMeta, nextItems);
+
+    set((s) => ({
+      activePack: bundle,
+      activeItems: nextItems,
+      activeEditItemDraft: cloneShotItem(savedShot, idx),
+      editVarVersion: s.editVarVersion + 1,
+    }));
+  },
+
+  deselectEditShot: async () => {
+    if (get().isCurrentShotDirty()) {
+      await get().saveCurrentShotToEditWorkspace();
     }
+    activeEditItemVariable = null;
+    set((s) => ({
+      isEditingItem: false,
+      activeEditItemDraft: null,
+      editVarVersion: s.editVarVersion + 1,
+    }));
+  },
+
+  isCurrentShotDirty: () => {
+    const { isEditingItem, activeEditItemDraft, activeItems, currentShotIndex } = get();
+    const draft = activeEditItemVariable || activeEditItemDraft;
+    if (!isEditingItem || !draft) return false;
+    const saved = activeItems[currentShotIndex];
+    if (!saved) return true;
+    return !areShotItemsEqual(draft, saved);
+  },
+
+  hasUnsavedEditSessionChanges: () => {
+    const { activeItems, committedSessionItems, isEditingItem, activeEditItemDraft, currentShotIndex } = get();
+    const draft = activeEditItemVariable || activeEditItemDraft;
+    const effectiveItems =
+      isEditingItem && draft
+        ? activeItems.map((it, i) => (i === currentShotIndex ? cloneShotItem(draft, i) : it))
+        : activeItems;
+    return !areShotListsEqual(effectiveItems, committedSessionItems);
+  },
+
+  commitEditSessionToMainDb: async () => {
+    const { activePack, activeItems, isEditingItem, activeEditItemDraft, currentShotIndex } = get();
+    if (!activePack) return;
+    const draft = activeEditItemVariable || activeEditItemDraft;
+    const finalItems = (
+      isEditingItem && draft
+        ? activeItems.map((it, i) => (i === currentShotIndex ? cloneShotItem(draft, i) : it))
+        : activeItems
+    )
+      .slice(0, MAX_SHOTS_PER_PACK)
+      .map((it, idx) => cloneShotItem(it, idx));
+
+    const updatedMeta: StaticTrainingPackMetadata = {
+      ...activePack.metadata,
+      itemCount: finalItems.length,
+      updatedAt: Date.now(),
+    };
+
+    await saveStaticTrainingPackFull(updatedMeta, finalItems);
+    await clearEditWorkspaceByUuid(activePack.uuid);
+    const packs = await listStaticTrainingPacks();
+    const bundle = buildActivePackBundle(updatedMeta, finalItems);
+
+    activeEditItemVariable = null;
+    set((s) => ({
+      packs,
+      activePack: bundle,
+      activeItems: finalItems,
+      committedSessionItems: finalItems.map((it, idx) => cloneShotItem(it, idx)),
+      isEditingItem: false,
+      activeEditItemDraft: null,
+      isFreeCamTrajectoryTesting: false,
+      isTestingSingleShot: false,
+      editVarVersion: s.editVarVersion + 1,
+    }));
+  },
+
+  discardEditSessionChanges: async () => {
+    const { activePack } = get();
+    if (!activePack) return;
+    await clearEditWorkspaceByUuid(activePack.uuid);
+    const loaded = await loadStaticTrainingPackByUuid(activePack.uuid);
+    const bundle = buildActivePackBundle(loaded.metadata, loaded.items);
+    activeEditItemVariable = null;
+    set((s) => ({
+      activePack: bundle,
+      activeItems: loaded.items,
+      committedSessionItems: loaded.items.map((it, idx) => cloneShotItem(it, idx)),
+      currentShotIndex: 0,
+      isEditingItem: false,
+      activeEditItemDraft: null,
+      isFreeCamTrajectoryTesting: false,
+      isTestingSingleShot: false,
+      editVarVersion: s.editVarVersion + 1,
+    }));
+  },
+
+  createPack: async (title: string, description: string) => {
     const now = Date.now();
     const uuid = generateUUID();
     const initialShot = createDefaultShotItem(0);
@@ -282,6 +446,7 @@ export const useStaticTrainingPackStore = create<StaticTrainingPackStoreState>((
       selectedPackUuid: uuid,
       activePack: bundle,
       activeItems: [initialShot],
+      committedSessionItems: [cloneShotItem(initialShot, 0)],
       currentShotIndex: 0,
       isEditingItem: false,
       activeEditItemDraft: null,
@@ -333,14 +498,12 @@ export const useStaticTrainingPackStore = create<StaticTrainingPackStoreState>((
       selectedPackUuid: nextUuid,
       activePack: nextActivePack,
       activeItems: nextActiveItems,
+      committedSessionItems: nextActiveItems.map((it, idx) => cloneShotItem(it, idx)),
       currentShotIndex: 0,
     });
   },
 
   exportPackRCS: async (uuid?: string) => {
-    if (get().isEditingItem) {
-      await get().exitItemEditModeAndSave();
-    }
     const targetUuid = uuid || get().activePack?.uuid || get().selectedPackUuid;
     if (!targetUuid) return null;
     const loaded = await loadStaticTrainingPackByUuid(targetUuid);
@@ -349,9 +512,6 @@ export const useStaticTrainingPackStore = create<StaticTrainingPackStoreState>((
   },
 
   importPackRCS: async (file: File) => {
-    if (get().isEditingItem) {
-      await get().exitItemEditModeAndSave();
-    }
     const { metadata, items } = await importStaticTrainingPackFromFile(file);
     const packs = await listStaticTrainingPacks();
     const bundle = buildActivePackBundle(metadata, items);
@@ -361,6 +521,7 @@ export const useStaticTrainingPackStore = create<StaticTrainingPackStoreState>((
       selectedPackUuid: metadata.uuid,
       activePack: bundle,
       activeItems: items,
+      committedSessionItems: items.map((it, idx) => cloneShotItem(it, idx)),
       currentShotIndex: 0,
       isEditingItem: false,
       activeEditItemDraft: null,
@@ -407,11 +568,11 @@ export const useStaticTrainingPackStore = create<StaticTrainingPackStoreState>((
   },
 
   addNewShot: async () => {
-    if (get().isEditingItem) {
-      await get().exitItemEditModeAndSave();
+    if (get().isEditingItem && get().isCurrentShotDirty()) {
+      await get().saveCurrentShotToEditWorkspace();
     }
     const { activePack, activeItems } = get();
-    if (!activePack) return;
+    if (!activePack || activeItems.length >= MAX_SHOTS_PER_PACK) return;
     const newIndex = activeItems.length;
     const newShot = createDefaultShotItem(newIndex);
     const nextItems = [...activeItems, newShot];
@@ -420,27 +581,32 @@ export const useStaticTrainingPackStore = create<StaticTrainingPackStoreState>((
       itemCount: nextItems.length,
       updatedAt: Date.now(),
     };
-    await saveStaticTrainingPackFull(updatedMeta, nextItems);
-    const packs = await listStaticTrainingPacks();
+    await saveEditWorkspacePackFull(updatedMeta, nextItems);
     const bundle = buildActivePackBundle(updatedMeta, nextItems);
     set({
-      packs,
       activePack: bundle,
       activeItems: nextItems,
       currentShotIndex: newIndex,
     });
-    get().enterItemEditMode(newIndex);
     get().runtimeHandlers.onShotChanged?.(newIndex);
   },
 
   duplicateShot: async (index: number) => {
-    if (get().isEditingItem) {
-      await get().exitItemEditModeAndSave();
+    if (get().isEditingItem && get().isCurrentShotDirty()) {
+      await get().saveCurrentShotToEditWorkspace();
     }
     const { activePack, activeItems } = get();
-    if (!activePack || index < 0 || index >= activeItems.length) return;
+    if (
+      !activePack ||
+      index < 0 ||
+      index >= activeItems.length ||
+      activeItems.length >= MAX_SHOTS_PER_PACK
+    ) {
+      return;
+    }
     const source = activeItems[index];
     const duplicated = cloneShotItem(source, index + 1);
+    duplicated.id = generateUUID();
     duplicated.name = `${source.name || `Shot ${index + 1}`} (Copy)`;
     const nextItems = [
       ...activeItems.slice(0, index + 1),
@@ -453,22 +619,19 @@ export const useStaticTrainingPackStore = create<StaticTrainingPackStoreState>((
       itemCount: nextItems.length,
       updatedAt: Date.now(),
     };
-    await saveStaticTrainingPackFull(updatedMeta, nextItems);
-    const packs = await listStaticTrainingPacks();
+    await saveEditWorkspacePackFull(updatedMeta, nextItems);
     const bundle = buildActivePackBundle(updatedMeta, nextItems);
     set({
-      packs,
       activePack: bundle,
       activeItems: nextItems,
       currentShotIndex: index + 1,
     });
-    get().enterItemEditMode(index + 1);
     get().runtimeHandlers.onShotChanged?.(index + 1);
   },
 
   deleteShot: async (index: number) => {
-    if (get().isEditingItem) {
-      await get().exitItemEditModeAndSave();
+    if (get().isEditingItem && get().isCurrentShotDirty()) {
+      await get().saveCurrentShotToEditWorkspace();
     }
     const { activePack, activeItems, currentShotIndex } = get();
     if (!activePack || activeItems.length <= 1) return;
@@ -485,22 +648,22 @@ export const useStaticTrainingPackStore = create<StaticTrainingPackStoreState>((
       itemCount: nextItems.length,
       updatedAt: Date.now(),
     };
-    await saveStaticTrainingPackFull(updatedMeta, nextItems);
-    const packs = await listStaticTrainingPacks();
+    await saveEditWorkspacePackFull(updatedMeta, nextItems);
     const bundle = buildActivePackBundle(updatedMeta, nextItems);
+    activeEditItemVariable = null;
     set({
-      packs,
       activePack: bundle,
       activeItems: nextItems,
       currentShotIndex: nextIdx,
+      isEditingItem: false,
+      activeEditItemDraft: null,
     });
-    get().enterItemEditMode(nextIdx);
     get().runtimeHandlers.onShotChanged?.(nextIdx);
   },
 
   reorderShot: async (fromIndex: number, toIndex: number) => {
-    if (get().isEditingItem) {
-      await get().exitItemEditModeAndSave();
+    if (get().isEditingItem && get().isCurrentShotDirty()) {
+      await get().saveCurrentShotToEditWorkspace();
     }
     const { activePack, activeItems } = get();
     if (
@@ -523,27 +686,28 @@ export const useStaticTrainingPackStore = create<StaticTrainingPackStoreState>((
       itemCount: nextItems.length,
       updatedAt: Date.now(),
     };
-    await saveStaticTrainingPackFull(updatedMeta, nextItems);
-    const packs = await listStaticTrainingPacks();
+    await saveEditWorkspacePackFull(updatedMeta, nextItems);
     const bundle = buildActivePackBundle(updatedMeta, nextItems);
     set({
-      packs,
       activePack: bundle,
       activeItems: nextItems,
       currentShotIndex: toIndex,
     });
-    get().enterItemEditMode(toIndex);
     get().runtimeHandlers.onShotChanged?.(toIndex);
   },
 
   enterItemEditMode: (index?: number) => {
+    // If switching from another shot that has unsaved in-memory edits, flush it to the Edit-Mode IndexedDB first
+    if (get().isEditingItem && get().isCurrentShotDirty()) {
+      void get().saveCurrentShotToEditWorkspace();
+    }
     const items = get().activePack?.items || get().activeItems || [];
     const targetIdx = typeof index === 'number' ? index : get().currentShotIndex;
     const targetItem = items[targetIdx];
     if (!targetItem) return;
 
     const draft = cloneShotItem(targetItem, targetIdx);
-    activeEditItemVariable = draft;
+    activeEditItemVariable = cloneShotItem(draft, targetIdx);
 
     set((s) => ({
       sessionMode: 'edit',
@@ -554,38 +718,15 @@ export const useStaticTrainingPackStore = create<StaticTrainingPackStoreState>((
     }));
 
     const h = get().runtimeHandlers;
+    h.onShotChanged?.(targetIdx);
     h.onEditVariableMutated?.(draft);
     h.onSyncEditDraftToArena?.(draft);
   },
 
   exitItemEditModeAndSave: async () => {
-    const { activePack, activeItems, currentShotIndex, isEditingItem } = get();
-    const draft = activeEditItemVariable || get().activeEditItemDraft;
-    if (!isEditingItem || !activePack || !draft) {
-      activeEditItemVariable = null;
-      set({ isEditingItem: false, activeEditItemDraft: null });
-      return;
-    }
-
-    const idx = Math.max(0, Math.min(activeItems.length - 1, draft.index ?? currentShotIndex));
-    const committedItem = cloneShotItem(draft, idx);
-    const nextItems = activeItems.map((it, i) => (i === idx ? committedItem : it));
-    const updatedMeta: StaticTrainingPackMetadata = {
-      ...activePack.metadata,
-      itemCount: nextItems.length,
-      updatedAt: Date.now(),
-    };
-
-    // Persist to IndexedDB VFS only upon exiting Item Edit Mode
-    await saveSingleStaticTrainingShotItem(activePack.uuid, idx, committedItem, updatedMeta);
-    const packs = await listStaticTrainingPacks();
-    const bundle = buildActivePackBundle(updatedMeta, nextItems);
-
+    await get().saveCurrentShotToEditWorkspace();
     activeEditItemVariable = null;
     set((s) => ({
-      packs,
-      activePack: bundle,
-      activeItems: nextItems,
       isEditingItem: false,
       activeEditItemDraft: null,
       editVarVersion: s.editVarVersion + 1,
@@ -607,10 +748,10 @@ export const useStaticTrainingPackStore = create<StaticTrainingPackStoreState>((
     const targetIdx = typeof index === 'number' ? index : currentShotIndex;
     const parsedItem = await parseSingleShotItemFromJsonFile(file, targetIdx);
 
-    if (isEditingItem) {
-      activeEditItemVariable = parsedItem;
+    if (isEditingItem && targetIdx === currentShotIndex) {
+      activeEditItemVariable = cloneShotItem(parsedItem, targetIdx);
       set((s) => ({
-        activeEditItemDraft: parsedItem,
+        activeEditItemDraft: cloneShotItem(parsedItem, targetIdx),
         editVarVersion: s.editVarVersion + 1,
       }));
       const h = get().runtimeHandlers;
@@ -621,9 +762,9 @@ export const useStaticTrainingPackStore = create<StaticTrainingPackStoreState>((
 
     if (!activePack) return;
     const nextItems = activeItems.map((it, i) => (i === targetIdx ? parsedItem : it));
-    await saveSingleStaticTrainingShotItem(activePack.uuid, targetIdx, parsedItem, activePack.metadata);
+    await saveSingleEditWorkspaceShotItem(activePack.uuid, targetIdx, parsedItem, activePack.metadata);
     const bundle = buildActivePackBundle(activePack.metadata, nextItems);
-    set({ activePack: bundle, activeItems: nextItems });
+    set({ activePack: bundle, activeItems: nextItems, currentShotIndex: targetIdx });
     get().runtimeHandlers.onShotChanged?.(targetIdx);
   },
 

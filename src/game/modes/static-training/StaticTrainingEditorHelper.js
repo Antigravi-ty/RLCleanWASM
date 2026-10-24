@@ -1,7 +1,8 @@
 /**
  * StaticTrainingEditorHelper.js
- * 3D Editor Sub-Mode Camera, Continuous WASD/Mouse manipulation, and Play/Edit hotkeys
- * for StaticTrainingPackMode.
+ * 3D Editor Sub-Mode Camera (with Yaw + Pitch aiming for Car Heading, Car Speed, and Ball Speed),
+ * Continuous WASD/Mouse manipulation, Free-Cam [T] trajectory test & [G] single-shot test,
+ * and Play/Edit hotkeys for StaticTrainingPackMode.
  */
 
 import * as THREE from 'three';
@@ -24,6 +25,18 @@ export function applyEditSubModeCamera(mode, subMode) {
   const r = mode.runtime;
   if (!r?.camera) return;
 
+  if (subMode !== 'free-cam' && mode.isFreeCamTrajectoryTesting) {
+    mode.stopFreeCamTrajectoryTest?.();
+  }
+
+  if (mode.isTestingSingleShot) {
+    r.goalReplayCameraOverrideActive = false;
+    if (r.camera.isFreeCam) {
+      r.camera.setFreeCam(false);
+    }
+    return;
+  }
+
   if (subMode === 'free-cam') {
     r.goalReplayCameraOverrideActive = false;
     r.camera.setFreeCam(true);
@@ -31,48 +44,92 @@ export function applyEditSubModeCamera(mode, subMode) {
     if (r.camera.isFreeCam) {
       r.camera.setFreeCam(false);
     }
-    if (subMode === 'ball-speed') {
-      r.goalReplayCameraOverrideActive = true;
-      const shot = mode._getCurrentShotConfig();
-      if (shot) {
-        mode._editorCamSpherical.yaw = shot.ball.speedYaw;
-        mode._editorCamSpherical.pitch = -0.18;
-      }
-    } else {
-      r.goalReplayCameraOverrideActive = false;
-      r.camera.ballCam = false;
-    }
+    r.camera.ballCam = false;
+    r.goalReplayCameraOverrideActive = true;
   }
 }
 
 export function updateEditorCameraAndContinuousInputs(mode, dt) {
   const r = mode.runtime;
   const store = useStaticTrainingPackStore.getState();
-  if (store.sessionMode !== 'edit') return;
+  if (store.sessionMode !== 'edit' || mode.isTestingSingleShot) return;
 
   const subMode = store.editSubMode;
   const shot = mode._getCurrentShotConfig();
   if (!shot) return;
 
-  // Update dedicated ball camera when in 'ball-speed' sub-mode
-  if (subMode === 'ball-speed' && r?.camera?.camera) {
+  // 1. Update directional camera for 'car-heading', 'car-speed', and 'ball-speed' (both Yaw and Pitch)
+  if (subMode !== 'free-cam' && r?.camera?.camera) {
     r.goalReplayCameraOverrideActive = true;
     const cam = r.camera.camera;
-    const bLoc = shot.ball.location || shot.ball.pos || [0, 0, BALL_GROUND_MIN_Z];
-    const targetPos = new THREE.Vector3(bLoc[0], bLoc[2] + 35, bLoc[1]);
-    const lookYaw = shot.ball.speedYaw;
-    const dist = 560;
-    const heightOffset = 165;
-    cam.position.set(
-      targetPos.x - Math.cos(lookYaw) * dist,
-      Math.max(45, targetPos.y + heightOffset),
-      targetPos.z - Math.sin(lookYaw) * dist
-    );
-    cam.lookAt(
-      targetPos.x + Math.cos(lookYaw) * 260,
-      targetPos.y,
-      targetPos.z + Math.sin(lookYaw) * 260
-    );
+
+    if (subMode === 'car-heading') {
+      const cLoc = shot.car.location || shot.car.pos || [0, -2400, CAR_GROUND_MIN_Z];
+      const targetPos = new THREE.Vector3(cLoc[0], cLoc[2] + 35, cLoc[1]);
+      const lookYaw = Number(shot.car.headingYaw) || 0;
+      const lookPitch = shot.car.snapToGround ? 0 : Number(shot.car.headingPitch) || 0;
+      const cp = Math.cos(lookPitch);
+      const sp = Math.sin(lookPitch);
+      const fwdX = Math.cos(lookYaw) * cp;
+      const fwdY = sp;
+      const fwdZ = Math.sin(lookYaw) * cp;
+      const dist = 320;
+      const heightOffset = 90;
+      cam.position.set(
+        targetPos.x - fwdX * dist,
+        Math.max(24, targetPos.y - fwdY * dist + heightOffset),
+        targetPos.z - fwdZ * dist
+      );
+      cam.lookAt(
+        targetPos.x + fwdX * 420,
+        targetPos.y + fwdY * 420,
+        targetPos.z + fwdZ * 420
+      );
+    } else if (subMode === 'car-speed') {
+      const cLoc = shot.car.location || shot.car.pos || [0, -2400, CAR_GROUND_MIN_Z];
+      const targetPos = new THREE.Vector3(cLoc[0], cLoc[2] + 35, cLoc[1]);
+      const lookYaw = Number(shot.car.speedYaw ?? shot.car.headingYaw) || 0;
+      const lookPitch = Number(shot.car.speedPitch) || 0;
+      const cp = Math.cos(lookPitch);
+      const sp = Math.sin(lookPitch);
+      const fwdX = Math.cos(lookYaw) * cp;
+      const fwdY = sp;
+      const fwdZ = Math.sin(lookYaw) * cp;
+      const dist = 340;
+      const heightOffset = 95;
+      cam.position.set(
+        targetPos.x - fwdX * dist,
+        Math.max(24, targetPos.y - fwdY * dist + heightOffset),
+        targetPos.z - fwdZ * dist
+      );
+      cam.lookAt(
+        targetPos.x + fwdX * 450,
+        targetPos.y + fwdY * 450,
+        targetPos.z + fwdZ * 450
+      );
+    } else if (subMode === 'ball-speed') {
+      const bLoc = shot.ball.location || shot.ball.pos || [0, 0, BALL_GROUND_MIN_Z];
+      const targetPos = new THREE.Vector3(bLoc[0], bLoc[2] + 20, bLoc[1]);
+      const lookYaw = Number(shot.ball.speedYaw) || 0;
+      const lookPitch = Number(shot.ball.speedPitch) || 0;
+      const cp = Math.cos(lookPitch);
+      const sp = Math.sin(lookPitch);
+      const fwdX = Math.cos(lookYaw) * cp;
+      const fwdY = sp;
+      const fwdZ = Math.sin(lookYaw) * cp;
+      const dist = 520;
+      const heightOffset = 115;
+      cam.position.set(
+        targetPos.x - fwdX * dist,
+        Math.max(30, targetPos.y - fwdY * dist + heightOffset),
+        targetPos.z - fwdZ * dist
+      );
+      cam.lookAt(
+        targetPos.x + fwdX * 480,
+        targetPos.y + fwdY * 480,
+        targetPos.z + fwdZ * 480
+      );
+    }
   }
 
   // Do not process WASD object movement when modal panel is expanded, Free Cam is active, or no keys held
@@ -257,6 +314,21 @@ export function bindStaticTrainingSessionEvents(mode) {
       return;
     }
 
+    // If currently in Single-Shot Test [G] inside Edit Mode
+    if (store.sessionMode === 'edit' && mode.isTestingSingleShot) {
+      if ((code === 'KeyG' || evt.key === 'g' || evt.key === 'G') && !evt.repeat) {
+        evt.preventDefault();
+        mode.toggleSingleShotTest?.();
+        return;
+      }
+      if ((code === 'KeyR' || evt.key === 'r' || evt.key === 'R') && !evt.repeat) {
+        evt.preventDefault();
+        mode.reloadCurrentShot();
+        return;
+      }
+      return;
+    }
+
     if (store.sessionMode === 'play') {
       if ((code === 'KeyR' || evt.key === 'r' || evt.key === 'R') && !evt.repeat) {
         evt.preventDefault();
@@ -278,9 +350,8 @@ export function bindStaticTrainingSessionEvents(mode) {
 
     // Edit Mode hotkeys
     if (store.sessionMode === 'edit') {
-      if (!store.isEditingItem) {
-        store.enterItemEditMode(store.currentShotIndex);
-      }
+      const appState = useAppStore.getState();
+      if (appState.isOpen && !appState.isLivePreviewCollapsed) return;
 
       // Cycle edit sub-modes: Digit9 = Prev, Digit0 = Next
       if (code === 'Digit9' && !evt.repeat) {
@@ -295,10 +366,25 @@ export function bindStaticTrainingSessionEvents(mode) {
       }
 
       const subMode = store.editSubMode;
-      if (subMode === 'free-cam') return;
 
-      const appState = useAppStore.getState();
-      if (appState.isOpen && !appState.isLivePreviewCollapsed) return;
+      // Free Camera [T] Trajectory Test & [G] Single Shot Test
+      if (subMode === 'free-cam') {
+        if ((code === 'KeyT' || evt.key === 't' || evt.key === 'T') && !evt.repeat) {
+          evt.preventDefault();
+          mode.toggleFreeCamTrajectoryTest?.();
+          return;
+        }
+        if ((code === 'KeyG' || evt.key === 'g' || evt.key === 'G') && !evt.repeat) {
+          evt.preventDefault();
+          mode.toggleSingleShotTest?.();
+          return;
+        }
+        return;
+      }
+
+      if (!store.isEditingItem) {
+        store.enterItemEditMode(store.currentShotIndex);
+      }
 
       // Track held keys for continuous movement/adjustments
       mode.heldKeys.add(code);
@@ -364,7 +450,7 @@ export function bindStaticTrainingSessionEvents(mode) {
   mode._mouseDownHandler = (evt) => {
     if (mode.runtime?.match?.state?.mode !== 'static-training-pack') return;
     const store = useStaticTrainingPackStore.getState();
-    if (store.sessionMode !== 'edit') return;
+    if (store.sessionMode !== 'edit' || mode.isTestingSingleShot) return;
 
     const appState = useAppStore.getState();
     if (appState.isOpen && !appState.isLivePreviewCollapsed) return;
@@ -384,9 +470,6 @@ export function bindStaticTrainingSessionEvents(mode) {
     if (evt.button === 2) {
       // Right-click advances to next Edit Sub-Mode (same as Digit0)
       evt.preventDefault();
-      if (!store.isEditingItem) {
-        store.enterItemEditMode(store.currentShotIndex);
-      }
       store.cycleEditSubMode(1);
       return;
     }
@@ -404,7 +487,11 @@ export function bindStaticTrainingSessionEvents(mode) {
   mode._mouseMoveHandler = (evt) => {
     if (!mode.isLeftMouseDragging) return;
     const store = useStaticTrainingPackStore.getState();
-    if (store.sessionMode !== 'edit' || store.editSubMode === 'free-cam') {
+    if (
+      store.sessionMode !== 'edit' ||
+      store.editSubMode === 'free-cam' ||
+      mode.isTestingSingleShot
+    ) {
       mode.isLeftMouseDragging = false;
       return;
     }
@@ -458,7 +545,7 @@ export function bindStaticTrainingSessionEvents(mode) {
   mode._contextMenuHandler = (evt) => {
     if (mode.runtime?.match?.state?.mode === 'static-training-pack') {
       const store = useStaticTrainingPackStore.getState();
-      if (store.sessionMode === 'edit') {
+      if (store.sessionMode === 'edit' && !mode.isTestingSingleShot) {
         evt.preventDefault();
       }
     }

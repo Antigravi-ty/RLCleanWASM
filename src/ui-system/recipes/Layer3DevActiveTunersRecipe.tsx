@@ -12,6 +12,7 @@ import {
   Activity,
   Target,
   Camera,
+  Tag,
   Info,
 } from 'lucide-react';
 import { PanelContainer, PanelHeader, PanelContent, PanelFooter } from '../layout/Panel';
@@ -19,6 +20,7 @@ import { VStack } from '../layout/VStack';
 import { DEFAULT_PANEL_SIZING } from '../tokens';
 import {
   VEHICLE_GARAGE_TUNER_PRESET,
+  NAME_TAG_TUNER_PRESET,
   REACHABILITY_TUNER_PRESET,
   REPLAY_DIRECTOR_TUNER_PRESET,
   KICKOFF_TRAINING_PRESET,
@@ -47,6 +49,7 @@ export interface Layer3DevActiveTunersRecipeProps {
  * [Recipe] Layer 3 Active Tuners, Audio & Diagnostics
  * Hosts all uncalibrated / actively tuned developer tools:
  * - Vehicle Model & Offset Tuner (Per-Vehicle Hitbox & Align, Wheel Hub Anchors & Boost Nozzle Offsets)
+ * - Multiplayer Name Tag Active Tuner (6-Car Kickoff Stadium Spawner, Horizontal Pill Dimensions, Typography & Team Colors)
  * - Reachability & Intercept Tuner
  * - Kickoff Training (PPO) & Kickoff Rhythm Overlay Key Stagger
  * - Audio Variant Sound Sets & Advanced Audio Settings (navigates to Layer 4)
@@ -114,6 +117,20 @@ export const Layer3DevActiveTunersRecipe: React.FC<Layer3DevActiveTunersRecipePr
             badgeClass="bg-amber-500/15 border-amber-500/30 text-amber-400"
             description="Hitbox & Align, Per-Vehicle Wheel Hub Anchors & Dual Boost Exhaust Nozzle Offsets"
             hoverTooltip="Vehicle Model & Offset Tuner: Per-vehicle spatial calibration for Fennec & Insidio (Hitbox archetype, Chassis Center Offset, Wheel Hub Anchors & Boost Nozzle Offsets)."
+            onHover={setHoveredDesc}
+            onLeave={() => setHoveredDesc(null)}
+            isLight={isLight}
+          />
+
+          {/* 2. Multiplayer Name Tag Active Tuner (6-Car Kickoff Arena Evaluation) */}
+          <FloatingWindowCard
+            preset={NAME_TAG_TUNER_PRESET}
+            icon={<Tag className="h-5 w-5" />}
+            iconBgClass="bg-sky-500/10 text-sky-500"
+            badge="6-Car Kickoff · Pill UI"
+            badgeClass="bg-sky-500/15 border-sky-500/30 text-sky-400"
+            description="Horizontal pill dimensions, border, font size, truncation, opacity, team colors & 6-car kickoff stadium spawner"
+            hoverTooltip="Multiplayer Name Tag Active Tuner: Floating tuner with explicit button to enter the stadium, spawn 6 cars at kickoff slots, reshuffle formations, and evaluate camera-relative horizontal pill name tags."
             onHover={setHoveredDesc}
             onLeave={() => setHoveredDesc(null)}
             isLight={isLight}

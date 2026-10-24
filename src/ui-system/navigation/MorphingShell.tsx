@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { ChevronLeft } from 'lucide-react';
 import { KeycapBadge } from '../primitives/KeycapBadge';
@@ -102,11 +102,12 @@ export const MorphingShell: React.FC<MorphingShellProps> = ({
     'main-menu': 382,
     'play': 494,
     'bot-difficulty': 470,
+    'self-training': 470,
     'custom-training': 480,
     'training': 380,
   });
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open || isDockState || sizing?.mode === 'fixed') return;
     const wrapper = contentWrapperRef.current;
     if (!wrapper) return;
@@ -133,10 +134,11 @@ export const MorphingShell: React.FC<MorphingShellProps> = ({
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(panelEl);
-    Array.from(panelEl.children).forEach((child) => {
+    Array.from(panelEl.children).forEach((rawChild) => {
+      const child = rawChild as HTMLElement;
       ro.observe(child);
       if (
-        (child as HTMLElement).getAttribute('data-panel-section') === 'content' &&
+        child.getAttribute('data-panel-section') === 'content' &&
         child.firstElementChild
       ) {
         ro.observe(child.firstElementChild);

@@ -1,7 +1,7 @@
 /**
  * StaticTrainingArenaHelper.js
- * Physics staging, suspension settling (60-tick silent step), shot launch, and visual ball spin
- * for StaticTrainingPackMode.
+ * Physics staging, suspension settling (60-tick silent step), shot launch, Free-Cam trajectory test,
+ * and visual ball spin for StaticTrainingPackMode.
  */
 
 import { useStaticTrainingPackStore } from '../../../stores/staticTrainingPackStore';
@@ -72,7 +72,7 @@ export function computeLaunchVelocity(speed, yaw, pitch) {
 /**
  * Applies the shot's initial car & ball state to the arena while keeping velocities at 0
  * until the shot actually launches. If car.snapToGround is enabled, runs 60 silent physics
- * ticks to settle the vehicle's suspension before placing the ball.
+ * ticks to settle the vehicle's suspension before placing the ball and starting replay recording.
  */
 export function applyStagedShotToArena(mode, shot, isLiveEditUpdate = false) {
   const r = mode.runtime;
@@ -102,6 +102,8 @@ export function applyStagedShotToArena(mode, shot, isLiveEditUpdate = false) {
     ? 100
     : Math.max(0, Math.min(100, Number(car.initialBoost) || 0));
   sim.setUnlimitedBoost?.(Boolean(car.unlimitedBoost));
+
+  const hasFlip = Boolean(car.snapToGround || car.hasFlip !== false);
 
   // 1. Place Car (and settle suspension for 60 frames if snapToGround is active)
   if (car.snapToGround) {
@@ -144,7 +146,7 @@ export function applyStagedShotToArena(mode, shot, isLiveEditUpdate = false) {
       angVel: [0, 0, 0],
       boost: boostVal,
       isOnGround: isGroundAlt,
-      hasFlipOrJump: true,
+      hasFlipOrJump: hasFlip,
     });
   }
 
@@ -165,6 +167,9 @@ export function applyStagedShotToArena(mode, shot, isLiveEditUpdate = false) {
   if (!isLiveEditUpdate) {
     r.arena?.resetBallTrail?.();
     r.audioSubsystem?.resetAudio?.();
+    // Start recording into replayRingBuffer immediately after the 60-frame settle
+    mode.replayRingBuffer?.clear?.();
+    mode.replayRingBuffer?.recordFrame?.(mode.lastKickoffStartTick, sim.state);
   }
 
   // 3. Compute static preview trajectory for the ball's configured launch velocity
@@ -187,6 +192,7 @@ export function applyStagedShotToArena(mode, shot, isLiveEditUpdate = false) {
 
 /**
  * Launches the shot when countdown finishes or player provides initial driving input.
+ * Note: replayRingBuffer continues recording uninterrupted from entry (after 60-frame settle).
  */
 export function launchStaticTrainingShotNow(mode) {
   const r = mode.runtime;
@@ -204,6 +210,8 @@ export function launchStaticTrainingShotNow(mode) {
     : Math.max(0, Math.min(100, Number(car.initialBoost) || 0));
   const currentCarView = sim.getCarStateView?.(0);
   const spawnZ = currentCarView ? currentCarView.posZ : Math.max(CAR_GROUND_MIN_Z, carLoc[2]);
+  const isOnGround = Boolean(car.snapToGround || spawnZ <= CAR_GROUND_MIN_Z + 2);
+  const hasFlip = Boolean(car.snapToGround || car.hasFlip !== false);
 
   sim.setCarState(0, {
     pos: [carLoc[0], carLoc[1], spawnZ],
@@ -211,8 +219,8 @@ export function launchStaticTrainingShotNow(mode) {
     vel: carVel,
     angVel: [0, 0, 0],
     boost: boostVal,
-    isOnGround: car.snapToGround || spawnZ <= CAR_GROUND_MIN_Z + 2,
-    hasFlipOrJump: true,
+    isOnGround,
+    hasFlipOrJump: hasFlip,
   });
 
   mode.effectiveBallAngVel = computeEffectiveBallAngVel(ball);
@@ -242,14 +250,69 @@ export function launchStaticTrainingShotNow(mode) {
   }
 
   mode.playPhase = 'live';
-  mode.lastKickoffStartTick = Math.floor(sim.getHeaderView?.()?.tickCount ?? 0);
-  mode.replayRingBuffer?.clear?.();
-  mode.replayRingBuffer?.recordFrame?.(mode.lastKickoffStartTick, sim.state);
 
   useStaticTrainingPackStore.getState().updateLiveTelemetry({
     activeCountdownSec: 0,
     isShotLaunched: true,
   });
+}
+
+/**
+ * Launches both Car and Ball in-place during Free Camera [T] trajectory test
+ * without starting any countdown or timeout timer.
+ */
+export function launchFreeCamTrajectoryPreview(mode) {
+  const r = mode.runtime;
+  const sim = r?.physics;
+  const shot = mode.stagedShot;
+  if (!sim || !shot) return;
+
+  applyStagedShotToArena(mode, shot, true);
+
+  const { car, ball } = shot;
+  const carLoc = car.location || car.pos || [0, -2400, CAR_GROUND_MIN_Z];
+  const ballLoc = ball.location || ball.pos || [0, 0, BALL_GROUND_MIN_Z];
+  const carVel = computeLaunchVelocity(car.speed, car.speedYaw, car.speedPitch);
+  const boostVal = car.unlimitedBoost
+    ? 100
+    : Math.max(0, Math.min(100, Number(car.initialBoost) || 0));
+  const currentCarView = sim.getCarStateView?.(0);
+  const spawnZ = currentCarView ? currentCarView.posZ : Math.max(CAR_GROUND_MIN_Z, carLoc[2]);
+  const isOnGround = Boolean(car.snapToGround || spawnZ <= CAR_GROUND_MIN_Z + 2);
+  const hasFlip = Boolean(car.snapToGround || car.hasFlip !== false);
+
+  sim.setCarState(0, {
+    pos: [carLoc[0], carLoc[1], spawnZ],
+    rot: car.snapToGround ? [0, car.headingYaw, 0] : [car.headingPitch, car.headingYaw, car.airRoll],
+    vel: carVel,
+    angVel: [0, 0, 0],
+    boost: boostVal,
+    isOnGround,
+    hasFlipOrJump: hasFlip,
+  });
+
+  mode.effectiveBallAngVel = computeEffectiveBallAngVel(ball);
+  if (ball.kickoffState) {
+    mode.kickoffBallFrozen = true;
+    sim.setBallState({
+      pos: [ballLoc[0], ballLoc[1], Math.max(BALL_GROUND_MIN_Z, ballLoc[2])],
+      vel: [0, 0, 0],
+      angVel: [0, 0, 0],
+    });
+  } else {
+    mode.kickoffBallFrozen = false;
+    const ballVel = computeLaunchVelocity(ball.speed, ball.speedYaw, ball.speedPitch);
+    sim.setBallState({
+      pos: [ballLoc[0], ballLoc[1], Math.max(BALL_GROUND_MIN_Z, ballLoc[2])],
+      vel: ballVel,
+      angVel: mode.effectiveBallAngVel,
+    });
+  }
+
+  if (r.ballTrajectoryPredictor) {
+    r.ballTrajectoryPredictor.clearStaticPreview?.();
+    r.ballTrajectoryPredictor.forcePredictAnyMovement = true;
+  }
 }
 
 export function spinBallMeshInPlace(mode, dt) {

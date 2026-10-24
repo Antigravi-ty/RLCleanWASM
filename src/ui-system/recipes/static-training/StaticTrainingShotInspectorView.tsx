@@ -1,13 +1,12 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Compass,
   Gauge,
   CircleDot,
   Camera,
-  Download,
   RotateCw,
+  Save,
 } from 'lucide-react';
-import { Badge } from '../../primitives/Badge';
 import { ToggleSwitch } from '../../primitives/ToggleSwitch';
 import { KeycapBadge } from '../../primitives/KeycapBadge';
 import { CompactNumberSlider } from './CompactNumberSlider';
@@ -35,27 +34,27 @@ const SUB_MODE_OPTIONS: {
 }[] = [
   {
     id: 'car-heading',
-    label: '1. Car Heading',
+    label: 'Car Heading',
     icon: <Compass className="h-3.5 w-3.5" />,
-    hint: 'WASD/Space/V Move Car (V at ground -> Snap 60f) • Drag Mouse = Heading • Q/E = Air Roll • O/P = Boost',
+    hint: 'WASD/Space/V Move Car • Drag Mouse = Car Heading & Pitch • Q/E = Air Roll • O/P = Boost',
   },
   {
     id: 'car-speed',
-    label: '2. Car Speed',
+    label: 'Car Speed',
     icon: <Gauge className="h-3.5 w-3.5" />,
-    hint: 'WASD/Space/V Move Car • Drag Mouse = Car Speed Direction • [ / ] = Adjust Car Speed',
+    hint: 'WASD/Space/V Move Car • Drag Mouse = Car Velocity Yaw & Pitch • [ / ] = Car Speed',
   },
   {
     id: 'ball-speed',
-    label: '3. Ball Speed',
+    label: 'Ball Speed',
     icon: <CircleDot className="h-3.5 w-3.5" />,
-    hint: 'WASD/Space/V Move Ball • Drag Mouse = Ball Launch Direction • [ / ] = Ball Speed ([ at 0 -> Kickoff Freeze)',
+    hint: 'WASD/Space/V Move Ball • Drag Mouse = Ball Velocity Yaw & Pitch • [ / ] = Ball Speed',
   },
   {
     id: 'free-cam',
-    label: '4. Free Cam',
+    label: 'Free Cam',
     icon: <Camera className="h-3.5 w-3.5" />,
-    hint: 'Free Camera Controller (WASD + Space + V + Drag Look) with 3D trajectory & scene annotations',
+    hint: 'WASD/Space/V + Drag Look • [T] Toggle Trajectory Preview • [G] Test Single Shot',
   },
 ];
 
@@ -66,29 +65,109 @@ export const StaticTrainingShotInspectorView: React.FC<StaticTrainingShotInspect
 }) => {
   const editSubMode = useStaticTrainingPackStore((s) => s.editSubMode);
   const setEditSubMode = useStaticTrainingPackStore((s) => s.setEditSubMode);
-  const exportSingleShotJson = useStaticTrainingPackStore((s) => s.exportSingleShotJson);
+  const isCurrentShotDirty = useStaticTrainingPackStore((s) => s.isCurrentShotDirty);
+  const saveCurrentShotToEditWorkspace = useStaticTrainingPackStore(
+    (s) => s.saveCurrentShotToEditWorkspace
+  );
+  const editVarVersion = useStaticTrainingPackStore((s) => s.editVarVersion);
+  void editVarVersion;
+
+  // Show Advanced is transient UI state: always defaults to false and resets whenever selecting a shot
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  useEffect(() => {
+    setShowAdvanced(false);
+  }, [currentShot.id, currentShot.index]);
+
+  const isDirty = isCurrentShotDirty();
+  const limitBoostAmount = !currentShot.car.unlimitedBoost;
+  const hasFlip = currentShot.car.hasFlip !== false;
+
+  const sectionBg = isLight
+    ? 'bg-white border-neutral-200 text-neutral-900'
+    : 'bg-neutral-900/60 border-neutral-800 text-neutral-100';
 
   return (
-    <div className="flex flex-col gap-3">
-      {/* 4 Separated Edit Sub-Modes Selector ([9] Prev / [0] or Right-Click Next) */}
-      <div
-        className={`p-2.5 rounded-xl border flex flex-col gap-2 ${
-          isLight ? 'bg-neutral-50 border-neutral-200' : 'bg-neutral-900/70 border-neutral-800'
-        }`}
-      >
-        <div className="flex items-center justify-between">
-          <span className="text-[11px] font-bold uppercase tracking-wider opacity-75">
-            Active 3D Edit Sub-Mode
-          </span>
+    <div className="flex flex-col gap-2.5">
+      {/* 1. Top Bar: Shot Name Input on Left + Save Button on Right (Disabled when clean) */}
+      <div className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 ${sectionBg}`}>
+        <input
+          type="text"
+          value={currentShot.name}
+          onChange={(e) =>
+            mutateActiveEditItemVariable((d) => {
+              d.name = e.target.value;
+            })
+          }
+          className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold grow outline-none ${
+            isLight
+              ? 'bg-neutral-50 focus:bg-white border-neutral-300 text-neutral-900'
+              : 'bg-neutral-850 focus:bg-neutral-800 border-neutral-700 text-neutral-100'
+          }`}
+          placeholder="Shot Name"
+        />
+
+        <button
+          type="button"
+          disabled={!isDirty}
+          onClick={async () => {
+            await saveCurrentShotToEditWorkspace();
+            onHoverDesc(`Saved #${String(currentShot.index + 1).padStart(2, '0')} (${currentShot.name}) to edit workspace.`);
+          }}
+          onMouseEnter={() =>
+            onHoverDesc(
+              isDirty
+                ? 'Save changes for this shot into the Edit Mode workspace.'
+                : 'No unsaved changes on this shot.'
+            )
+          }
+          onMouseLeave={() => onHoverDesc(null)}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold shrink-0 transition-all ${
+            isDirty
+              ? isLight
+                ? 'bg-neutral-900 hover:bg-neutral-800 border-neutral-900 text-white cursor-pointer active:scale-95'
+                : 'bg-emerald-500 hover:bg-emerald-400 border-emerald-400 text-neutral-950 cursor-pointer active:scale-95'
+              : isLight
+              ? 'bg-neutral-100 border-neutral-200 text-neutral-400 opacity-50 cursor-not-allowed'
+              : 'bg-neutral-850 border-neutral-800 text-neutral-500 opacity-50 cursor-not-allowed'
+          }`}
+        >
+          <Save className="h-3.5 w-3.5" />
+          <span>Save</span>
+        </button>
+      </div>
+
+      {/* 2. Top Quick Action Bar: Air Roll Reset Level + 4 Sub-Mode Buttons */}
+      <div className={`p-2.5 rounded-xl border flex flex-col gap-2 ${sectionBg}`}>
+        <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 text-[10px] font-mono opacity-80">
-            <span>Prev:</span>
-            <KeycapBadge shortcut="9" size="sm" isLight={isLight} />
-            <span>Next:</span>
-            <KeycapBadge shortcut="0 / R-Click" size="sm" isLight={isLight} />
+            <span>Sub-Mode:</span>
+            <KeycapBadge shortcut="9 / 0" size="sm" isLight={isLight} />
           </div>
+
+          <button
+            type="button"
+            onClick={() =>
+              mutateActiveEditItemVariable((d) => {
+                d.car.airRoll = 0;
+                d.car.headingPitch = 0;
+              })
+            }
+            onMouseEnter={() =>
+              onHoverDesc('Reset Car Air Roll and Pitch to horizontal level (0 deg).')
+            }
+            onMouseLeave={() => onHoverDesc(null)}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-bold cursor-pointer transition-all active:scale-95 ${
+              isLight
+                ? 'bg-neutral-100 hover:bg-neutral-200 border-neutral-300 text-neutral-800'
+                : 'bg-neutral-800 hover:bg-neutral-700 border-neutral-700 text-neutral-200'
+            }`}
+          >
+            <RotateCw className="h-3 w-3" />
+            <span>Air Roll Reset Level</span>
+          </button>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+        <div className="grid grid-cols-4 gap-1.5">
           {SUB_MODE_OPTIONS.map((opt) => {
             const active = editSubMode === opt.id;
             return (
@@ -98,13 +177,13 @@ export const StaticTrainingShotInspectorView: React.FC<StaticTrainingShotInspect
                 onClick={() => setEditSubMode(opt.id)}
                 onMouseEnter={() => onHoverDesc(opt.hint)}
                 onMouseLeave={() => onHoverDesc(null)}
-                className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg border text-[11px] font-bold transition-all cursor-pointer ${
+                className={`flex items-center justify-center gap-1 py-1.5 px-1.5 rounded-lg border text-[10px] font-bold transition-all cursor-pointer ${
                   active
                     ? isLight
                       ? 'bg-neutral-900 border-neutral-900 text-white shadow-2xs'
                       : 'bg-white border-white text-neutral-900 shadow-2xs'
                     : isLight
-                    ? 'bg-white hover:bg-neutral-100 border-neutral-300 text-neutral-700'
+                    ? 'bg-neutral-50 hover:bg-neutral-100 border-neutral-300 text-neutral-700'
                     : 'bg-neutral-850 hover:bg-neutral-800 border-neutral-700 text-neutral-300'
                 }`}
               >
@@ -114,117 +193,25 @@ export const StaticTrainingShotInspectorView: React.FC<StaticTrainingShotInspect
             );
           })}
         </div>
-
-        <div
-          className={`text-[10px] font-mono px-2 py-1 rounded border ${
-            isLight
-              ? 'bg-white border-neutral-200 text-neutral-600'
-              : 'bg-neutral-950/60 border-neutral-800 text-neutral-300'
-          }`}
-        >
-          {SUB_MODE_OPTIONS.find((o) => o.id === editSubMode)?.hint}
-        </div>
       </div>
 
-      {/* Shot Name, Timeout & Single-Item JSON Export */}
-      <div
-        className={`p-2.5 rounded-xl border flex flex-col gap-2 ${
-          isLight ? 'bg-white border-neutral-200' : 'bg-neutral-900/50 border-neutral-800'
-        }`}
-      >
-        <div className="flex items-center justify-between gap-2">
-          <input
-            type="text"
-            value={currentShot.name}
-            onChange={(e) =>
-              mutateActiveEditItemVariable((d) => {
-                d.name = e.target.value;
-              })
-            }
-            className={`px-2.5 py-1 rounded-lg border text-xs font-bold grow outline-none ${
-              isLight
-                ? 'bg-neutral-50 border-neutral-300 text-neutral-900'
-                : 'bg-neutral-850 border-neutral-700 text-neutral-100'
-            }`}
-            placeholder="Shot Name"
-          />
-          <button
-            type="button"
-            onClick={() => exportSingleShotJson()}
-            className={`flex items-center gap-1 px-2.5 py-1 rounded-lg border text-[11px] font-semibold shrink-0 cursor-pointer ${
-              isLight
-                ? 'bg-neutral-100 hover:bg-neutral-200 border-neutral-300 text-neutral-800'
-                : 'bg-neutral-800 hover:bg-neutral-700 border-neutral-700 text-neutral-200'
-            }`}
-            title="Export this shot item as a standalone .json file"
-          >
-            <Download className="h-3.5 w-3.5" />
-            <span>Export Item .JSON</span>
-          </button>
-        </div>
-
-        <CompactNumberSlider
-          label="Shot Timeout"
-          value={currentShot.timeoutSeconds}
-          min={1}
-          max={60}
-          step={1}
-          unit="s"
-          onChange={(val) =>
-            mutateActiveEditItemVariable((d) => {
-              d.timeoutSeconds = val;
-            })
-          }
-          isLight={isLight}
-        />
-      </div>
-
-      {/* CAR CONFIGURATION SECTION */}
-      <div
-        className={`p-2.5 rounded-xl border flex flex-col gap-1.5 ${
-          isLight ? 'bg-white border-neutral-200' : 'bg-neutral-900/50 border-neutral-800'
-        }`}
-      >
-        <div className="flex items-center justify-between pb-1 border-b border-neutral-500/15">
-          <span className="text-[11px] font-bold uppercase tracking-wider">
-            Vehicle State (X: {Math.round(currentShot.car.location[0])}, Y:{' '}
-            {Math.round(currentShot.car.location[1])}, Z:{' '}
-            {Math.round(currentShot.car.location[2])})
-          </span>
-          <button
-            type="button"
-            onClick={() =>
-              mutateActiveEditItemVariable((d) => {
-                d.car.airRoll = 0;
-                d.car.headingPitch = 0;
-              })
-            }
-            className={`flex items-center gap-1 px-2 py-0.5 rounded border text-[10px] font-semibold cursor-pointer ${
-              isLight
-                ? 'bg-neutral-100 hover:bg-neutral-200 border-neutral-300 text-neutral-800'
-                : 'bg-neutral-800 hover:bg-neutral-700 border-neutral-700 text-neutral-200'
-            }`}
-            title="Restore car pitch and air roll to horizontal level (0 deg)"
-          >
-            <RotateCw className="h-3 w-3" />
-            <span>Reset Level (Q/E=0)</span>
-          </button>
-        </div>
-
-        <div className="flex items-center justify-between py-0.5 px-1.5">
-          <span className="text-[11px] font-semibold">
-            Snap to Ground (60-Frame Suspension Settle [V])
-          </span>
+      {/* 3. Core Shot Controls (Ordered as specified) */}
+      <div className={`p-2.5 rounded-xl border flex flex-col gap-2 ${sectionBg}`}>
+        {/* (a) Limit Boost Amount Toggle Switch (Default OFF -> Unlimited Boost) */}
+        <div className="flex items-center justify-between py-0.5 px-1">
+          <div className="flex flex-col">
+            <span className="text-[11px] font-semibold">Limit Boost Amount</span>
+            <span className="text-[10px] opacity-65">
+              {limitBoostAmount
+                ? `Limited (${Math.round(currentShot.car.initialBoost)}% initial boost)`
+                : 'Unlimited Boost (INF)'}
+            </span>
+          </div>
           <ToggleSwitch
-            checked={currentShot.car.snapToGround}
+            checked={limitBoostAmount}
             onCheckedChange={(checked) =>
               mutateActiveEditItemVariable((d) => {
-                d.car.snapToGround = checked;
-                if (checked) {
-                  d.car.location[2] = 17.05;
-                  d.car.headingPitch = 0;
-                  d.car.airRoll = 0;
-                }
+                d.car.unlimitedBoost = !checked;
               })
             }
             isLight={isLight}
@@ -232,87 +219,9 @@ export const StaticTrainingShotInspectorView: React.FC<StaticTrainingShotInspect
           />
         </div>
 
-        <CompactNumberSlider
-          label="Car Heading Yaw"
-          value={radToDeg(currentShot.car.headingYaw)}
-          min={-180}
-          max={180}
-          step={1}
-          unit="°"
-          onChange={(deg) =>
-            mutateActiveEditItemVariable((d) => {
-              d.car.headingYaw = degToRad(deg);
-            })
-          }
-          isLight={isLight}
-        />
-
-        <CompactNumberSlider
-          label="Car Air Roll [Q/E]"
-          value={radToDeg(currentShot.car.airRoll)}
-          min={-180}
-          max={180}
-          step={1}
-          unit="°"
-          onChange={(deg) =>
-            mutateActiveEditItemVariable((d) => {
-              d.car.airRoll = degToRad(deg);
-              if (deg !== 0) d.car.snapToGround = false;
-            })
-          }
-          isLight={isLight}
-        />
-
-        <CompactNumberSlider
-          label="Car Speed [ / ]"
-          value={Math.round(currentShot.car.speed)}
-          min={0}
-          max={2300}
-          step={10}
-          unit=" UU"
-          onChange={(spd) =>
-            mutateActiveEditItemVariable((d) => {
-              d.car.speed = spd;
-            })
-          }
-          isLight={isLight}
-        />
-
-        <CompactNumberSlider
-          label="Car Speed Yaw"
-          value={radToDeg(currentShot.car.speedYaw)}
-          min={-180}
-          max={180}
-          step={1}
-          unit="°"
-          onChange={(deg) =>
-            mutateActiveEditItemVariable((d) => {
-              d.car.speedYaw = degToRad(deg);
-            })
-          }
-          isLight={isLight}
-        />
-
-        <div className="flex items-center justify-between py-0.5 px-1.5">
-          <span className="text-[11px] font-semibold">
-            Unlimited Boost (Press [P] at 100)
-          </span>
-          <ToggleSwitch
-            checked={currentShot.car.unlimitedBoost}
-            onCheckedChange={(checked) =>
-              mutateActiveEditItemVariable((d) => {
-                d.car.unlimitedBoost = checked;
-                if (checked) d.car.initialBoost = 100;
-              })
-            }
-            isLight={isLight}
-            variant="neutral"
-          />
-        </div>
-
-        {!currentShot.car.unlimitedBoost && (
+        {limitBoostAmount && (
           <CompactNumberSlider
-            label="Initial Boost [O/P]"
+            label="Boost Amount [O/P]"
             value={Math.round(currentShot.car.initialBoost)}
             min={0}
             max={100}
@@ -326,42 +235,44 @@ export const StaticTrainingShotInspectorView: React.FC<StaticTrainingShotInspect
             isLight={isLight}
           />
         )}
-      </div>
 
-      {/* BALL CONFIGURATION SECTION */}
-      <div
-        className={`p-2.5 rounded-xl border flex flex-col gap-1.5 ${
-          isLight ? 'bg-white border-neutral-200' : 'bg-neutral-900/50 border-neutral-800'
-        }`}
-      >
-        <div className="flex items-center justify-between pb-1 border-b border-neutral-500/15">
-          <span className="text-[11px] font-bold uppercase tracking-wider">
-            Ball State (X: {Math.round(currentShot.ball.location[0])}, Y:{' '}
-            {Math.round(currentShot.ball.location[1])}, Z:{' '}
-            {Math.round(currentShot.ball.location[2])})
-          </span>
-          {currentShot.ball.kickoffState && (
-            <Badge variant="default" size="sm" isLight={isLight}>
-              KICKOFF FREEZE
-            </Badge>
-          )}
-        </div>
+        {/* (b) Time Limit Slider (Default 10s, Max 60s) */}
+        <CompactNumberSlider
+          label="Time Limit"
+          value={currentShot.timeoutSeconds}
+          min={1}
+          max={60}
+          step={1}
+          unit="s"
+          onChange={(val) =>
+            mutateActiveEditItemVariable((d) => {
+              d.timeoutSeconds = Math.max(1, Math.min(60, val));
+            })
+          }
+          isLight={isLight}
+        />
 
-        <div className="flex items-center justify-between py-0.5 px-1.5">
+        {/* (c) Snap to Ground Toggle Switch (Default ON) */}
+        <div className="flex items-center justify-between py-0.5 px-1">
           <div className="flex flex-col">
-            <span className="text-[11px] font-semibold">
-              Kickoff State (Stationary Mid-Air Until Touched)
-            </span>
+            <span className="text-[11px] font-semibold">Snap to Ground</span>
             <span className="text-[10px] opacity-65">
-              Auto-activates when pressing &apos;[&apos; again at 0 speed
+              60-frame suspension settle on ground [V]
             </span>
           </div>
           <ToggleSwitch
-            checked={currentShot.ball.kickoffState}
+            checked={currentShot.car.snapToGround}
             onCheckedChange={(checked) =>
               mutateActiveEditItemVariable((d) => {
-                d.ball.kickoffState = checked;
-                if (checked) d.ball.speed = 0;
+                d.car.snapToGround = checked;
+                if (checked) {
+                  d.car.location[2] = 17.05;
+                  d.car.headingPitch = 0;
+                  d.car.airRoll = 0;
+                  d.car.hasFlip = true;
+                } else if (d.car.location[2] < 45) {
+                  d.car.location[2] = 120;
+                }
               })
             }
             isLight={isLight}
@@ -369,58 +280,46 @@ export const StaticTrainingShotInspectorView: React.FC<StaticTrainingShotInspect
           />
         </div>
 
-        {!currentShot.ball.kickoffState && (
-          <>
-            <CompactNumberSlider
-              label="Ball Speed [ / ]"
-              value={Math.round(currentShot.ball.speed)}
-              min={0}
-              max={4000}
-              step={10}
-              unit=" UU"
-              onChange={(spd) =>
-                mutateActiveEditItemVariable((d) => {
-                  d.ball.speed = spd;
-                })
-              }
-              isLight={isLight}
-            />
+        {/* (d) Has Flip Toggle Switch (Default ON; when airborne & OFF, spawns without flip) */}
+        <div className="flex items-center justify-between py-0.5 px-1">
+          <div className="flex flex-col">
+            <span className="text-[11px] font-semibold">Has Flip</span>
+            <span className="text-[10px] opacity-65">
+              {currentShot.car.snapToGround
+                ? 'On Ground (Flip always available)'
+                : hasFlip
+                ? 'Airborne spawn with flip available'
+                : 'Airborne spawn with NO flip'}
+            </span>
+          </div>
+          <ToggleSwitch
+            checked={currentShot.car.snapToGround ? true : hasFlip}
+            onCheckedChange={(checked) =>
+              mutateActiveEditItemVariable((d) => {
+                d.car.hasFlip = checked;
+                if (!checked && d.car.snapToGround) {
+                  d.car.snapToGround = false;
+                  if (d.car.location[2] < 45) {
+                    d.car.location[2] = 120;
+                  }
+                }
+              })
+            }
+            isLight={isLight}
+            variant="neutral"
+          />
+        </div>
 
-            <CompactNumberSlider
-              label="Ball Speed Yaw"
-              value={radToDeg(currentShot.ball.speedYaw)}
-              min={-180}
-              max={180}
-              step={1}
-              unit="°"
-              onChange={(deg) =>
-                mutateActiveEditItemVariable((d) => {
-                  d.ball.speedYaw = degToRad(deg);
-                })
-              }
-              isLight={isLight}
-            />
-
-            <CompactNumberSlider
-              label="Ball Speed Pitch"
-              value={radToDeg(currentShot.ball.speedPitch)}
-              min={-85}
-              max={85}
-              step={1}
-              unit="°"
-              onChange={(deg) =>
-                mutateActiveEditItemVariable((d) => {
-                  d.ball.speedPitch = degToRad(deg);
-                })
-              }
-              isLight={isLight}
-            />
-          </>
-        )}
-
-        {/* Random vs Manual 3-Axis Angular Velocity */}
-        <div className="flex items-center justify-between py-0.5 px-1.5">
-          <span className="text-[11px] font-semibold">Random Angular Velocity</span>
+        {/* (e) Random Angular Velocity Toggle Switch (Default ON) */}
+        <div className="flex items-center justify-between py-0.5 px-1">
+          <div className="flex flex-col">
+            <span className="text-[11px] font-semibold">Random Angular Velocity</span>
+            <span className="text-[10px] opacity-65">
+              {currentShot.ball.randomAngularVelocity
+                ? 'Ball spin auto-generated from speed'
+                : 'Manual 3-axis ball angular velocity'}
+            </span>
+          </div>
           <ToggleSwitch
             checked={currentShot.ball.randomAngularVelocity}
             onCheckedChange={(checked) =>
@@ -433,8 +332,9 @@ export const StaticTrainingShotInspectorView: React.FC<StaticTrainingShotInspect
           />
         </div>
 
+        {/* Manual Angular Velocity Sliders (ONLY shown when Random Angular Velocity is OFF) */}
         {!currentShot.ball.randomAngularVelocity && (
-          <div className="flex flex-col gap-1 pt-1 border-t border-neutral-500/10">
+          <div className="flex flex-col gap-1.5 pt-1.5 border-t border-neutral-500/15">
             <CompactNumberSlider
               label="AngVel X (Pitch)"
               value={currentShot.ball.angularVelocity[0]}
@@ -479,7 +379,280 @@ export const StaticTrainingShotInspectorView: React.FC<StaticTrainingShotInspect
             />
           </div>
         )}
+
+        {/* (f) Show Advanced Toggle Switch (Default OFF, never persisted) */}
+        <div className="flex items-center justify-between py-0.5 px-1 border-t border-neutral-500/15 pt-2">
+          <div className="flex flex-col">
+            <span className="text-[11px] font-semibold">Show Advanced</span>
+            <span className="text-[10px] opacity-65">
+              Reveal exact coordinates, angles, speeds &amp; kickoff freeze
+            </span>
+          </div>
+          <ToggleSwitch
+            checked={showAdvanced}
+            onCheckedChange={(checked) => setShowAdvanced(checked)}
+            isLight={isLight}
+            variant="neutral"
+          />
+        </div>
       </div>
+
+      {/* 4. Advanced Detailed Parameters (ONLY visible when Show Advanced is ON) */}
+      {showAdvanced && (
+        <div className={`p-2.5 rounded-xl border flex flex-col gap-2 ${sectionBg}`}>
+          <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-400">
+            Advanced Car Parameters
+          </span>
+
+          <CompactNumberSlider
+            label="Car Pos X"
+            value={Math.round(currentShot.car.location[0])}
+            min={-3900}
+            max={3900}
+            step={10}
+            unit=" UU"
+            onChange={(val) =>
+              mutateActiveEditItemVariable((d) => {
+                d.car.location[0] = val;
+              })
+            }
+            isLight={isLight}
+          />
+          <CompactNumberSlider
+            label="Car Pos Y"
+            value={Math.round(currentShot.car.location[1])}
+            min={-5000}
+            max={5000}
+            step={10}
+            unit=" UU"
+            onChange={(val) =>
+              mutateActiveEditItemVariable((d) => {
+                d.car.location[1] = val;
+              })
+            }
+            isLight={isLight}
+          />
+          <CompactNumberSlider
+            label="Car Pos Z"
+            value={Math.round(currentShot.car.location[2])}
+            min={17}
+            max={1980}
+            step={5}
+            unit=" UU"
+            onChange={(val) =>
+              mutateActiveEditItemVariable((d) => {
+                d.car.location[2] = val;
+                if (val > 22) d.car.snapToGround = false;
+              })
+            }
+            isLight={isLight}
+          />
+
+          <CompactNumberSlider
+            label="Car Heading Yaw"
+            value={radToDeg(currentShot.car.headingYaw)}
+            min={-180}
+            max={180}
+            step={1}
+            unit="°"
+            onChange={(deg) =>
+              mutateActiveEditItemVariable((d) => {
+                d.car.headingYaw = degToRad(deg);
+              })
+            }
+            isLight={isLight}
+          />
+          <CompactNumberSlider
+            label="Car Heading Pitch"
+            value={radToDeg(currentShot.car.headingPitch)}
+            min={-85}
+            max={85}
+            step={1}
+            unit="°"
+            onChange={(deg) =>
+              mutateActiveEditItemVariable((d) => {
+                d.car.headingPitch = degToRad(deg);
+                if (deg !== 0) d.car.snapToGround = false;
+              })
+            }
+            isLight={isLight}
+          />
+          <CompactNumberSlider
+            label="Car Air Roll [Q/E]"
+            value={radToDeg(currentShot.car.airRoll)}
+            min={-180}
+            max={180}
+            step={1}
+            unit="°"
+            onChange={(deg) =>
+              mutateActiveEditItemVariable((d) => {
+                d.car.airRoll = degToRad(deg);
+                if (deg !== 0) d.car.snapToGround = false;
+              })
+            }
+            isLight={isLight}
+          />
+
+          <CompactNumberSlider
+            label="Car Speed [ / ]"
+            value={Math.round(currentShot.car.speed)}
+            min={0}
+            max={2300}
+            step={10}
+            unit=" UU"
+            onChange={(spd) =>
+              mutateActiveEditItemVariable((d) => {
+                d.car.speed = spd;
+              })
+            }
+            isLight={isLight}
+          />
+          <CompactNumberSlider
+            label="Car Speed Yaw"
+            value={radToDeg(currentShot.car.speedYaw)}
+            min={-180}
+            max={180}
+            step={1}
+            unit="°"
+            onChange={(deg) =>
+              mutateActiveEditItemVariable((d) => {
+                d.car.speedYaw = degToRad(deg);
+              })
+            }
+            isLight={isLight}
+          />
+          <CompactNumberSlider
+            label="Car Speed Pitch"
+            value={radToDeg(currentShot.car.speedPitch)}
+            min={-85}
+            max={85}
+            step={1}
+            unit="°"
+            onChange={(deg) =>
+              mutateActiveEditItemVariable((d) => {
+                d.car.speedPitch = degToRad(deg);
+              })
+            }
+            isLight={isLight}
+          />
+
+          <div className="pt-2 border-t border-neutral-500/15 flex flex-col gap-2">
+            <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-sky-400">
+              Advanced Ball Parameters
+            </span>
+
+            <div className="flex items-center justify-between py-0.5 px-1">
+              <div className="flex flex-col">
+                <span className="text-[11px] font-semibold">Kickoff Freeze State</span>
+                <span className="text-[10px] opacity-65">
+                  Stationary mid-air until touched (or press &apos;[&apos; at 0 speed)
+                </span>
+              </div>
+              <ToggleSwitch
+                checked={currentShot.ball.kickoffState}
+                onCheckedChange={(checked) =>
+                  mutateActiveEditItemVariable((d) => {
+                    d.ball.kickoffState = checked;
+                    if (checked) d.ball.speed = 0;
+                  })
+                }
+                isLight={isLight}
+                variant="neutral"
+              />
+            </div>
+
+            <CompactNumberSlider
+              label="Ball Pos X"
+              value={Math.round(currentShot.ball.location[0])}
+              min={-3900}
+              max={3900}
+              step={10}
+              unit=" UU"
+              onChange={(val) =>
+                mutateActiveEditItemVariable((d) => {
+                  d.ball.location[0] = val;
+                })
+              }
+              isLight={isLight}
+            />
+            <CompactNumberSlider
+              label="Ball Pos Y"
+              value={Math.round(currentShot.ball.location[1])}
+              min={-5000}
+              max={5000}
+              step={10}
+              unit=" UU"
+              onChange={(val) =>
+                mutateActiveEditItemVariable((d) => {
+                  d.ball.location[1] = val;
+                })
+              }
+              isLight={isLight}
+            />
+            <CompactNumberSlider
+              label="Ball Pos Z"
+              value={Math.round(currentShot.ball.location[2])}
+              min={94}
+              max={1940}
+              step={5}
+              unit=" UU"
+              onChange={(val) =>
+                mutateActiveEditItemVariable((d) => {
+                  d.ball.location[2] = val;
+                })
+              }
+              isLight={isLight}
+            />
+
+            {!currentShot.ball.kickoffState && (
+              <>
+                <CompactNumberSlider
+                  label="Ball Speed [ / ]"
+                  value={Math.round(currentShot.ball.speed)}
+                  min={0}
+                  max={4000}
+                  step={10}
+                  unit=" UU"
+                  onChange={(spd) =>
+                    mutateActiveEditItemVariable((d) => {
+                      d.ball.speed = spd;
+                    })
+                  }
+                  isLight={isLight}
+                />
+                <CompactNumberSlider
+                  label="Ball Speed Yaw"
+                  value={radToDeg(currentShot.ball.speedYaw)}
+                  min={-180}
+                  max={180}
+                  step={1}
+                  unit="°"
+                  onChange={(deg) =>
+                    mutateActiveEditItemVariable((d) => {
+                      d.ball.speedYaw = degToRad(deg);
+                    })
+                  }
+                  isLight={isLight}
+                />
+                <CompactNumberSlider
+                  label="Ball Speed Pitch"
+                  value={radToDeg(currentShot.ball.speedPitch)}
+                  min={-85}
+                  max={85}
+                  step={1}
+                  unit="°"
+                  onChange={(deg) =>
+                    mutateActiveEditItemVariable((d) => {
+                      d.ball.speedPitch = degToRad(deg);
+                    })
+                  }
+                  isLight={isLight}
+                />
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

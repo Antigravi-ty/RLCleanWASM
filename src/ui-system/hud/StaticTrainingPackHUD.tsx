@@ -1,20 +1,32 @@
 import React from 'react';
+import { Compass, Gauge, CircleDot, Camera } from 'lucide-react';
 import {
   useStaticTrainingPackStore,
   getActiveEditItemVariable,
+  type EditSubMode,
 } from '../../stores/staticTrainingPackStore';
 
 export interface StaticTrainingPackHUDProps {
   isLight?: boolean;
 }
 
+const MODE_ICONS: { id: EditSubMode; title: string; icon: React.ReactNode }[] = [
+  { id: 'car-heading', title: 'Car Heading', icon: <Compass className="h-4 w-4" /> },
+  { id: 'car-speed', title: 'Car Speed', icon: <Gauge className="h-4 w-4" /> },
+  { id: 'ball-speed', title: 'Ball Speed', icon: <CircleDot className="h-4 w-4" /> },
+  { id: 'free-cam', title: 'Free Camera', icon: <Camera className="h-4 w-4" /> },
+];
+
 /**
  * StaticTrainingPackHUD.tsx
- * Lightweight in-game overlay banner displayed when matchMode === 'static-training-pack'.
- * Shows:
- * - Play Mode: Shot index/name, remaining timeout timer (or overtime ground wait),
- *   Down Counter countdown / "Waiting for input", and [R] / [ / ] hotkeys.
- * - Edit Mode: Active 3D Edit Sub-Mode (1..4) with live Car/Ball telemetry and key hints.
+ * Streamlined in-game overlay banner displayed when matchMode === 'static-training-pack'.
+ * - Left: #00 shot number (max 99, no /total or shot name).
+ * - Center: 4 Edit Sub-Mode icons (Car Heading, Car Speed, Ball Speed, Free Camera) with active icon illuminated
+ *   (or timer/countdown in Play Mode).
+ * - Right (2 rows):
+ *   Row 1: Boost amount (INF in purple, >0 in normal color, 0 in red).
+ *   Row 2: HAS FLIP in normal color, or NO FLIP in orange.
+ * - Bottom shortcut line: "9/0 Cycle Selection · V to Move Down · O/P Boost · [/] Speed"
  */
 export const StaticTrainingPackHUD: React.FC<StaticTrainingPackHUDProps> = ({
   isLight = false,
@@ -31,6 +43,10 @@ export const StaticTrainingPackHUD: React.FC<StaticTrainingPackHUDProps> = ({
   const isShotLaunched = useStaticTrainingPackStore((s) => s.isShotLaunched);
   const isOvertimeWaitGround = useStaticTrainingPackStore((s) => s.isOvertimeWaitGround);
   const isReplayActive = useStaticTrainingPackStore((s) => s.isReplayActive);
+  const isFreeCamTrajectoryTesting = useStaticTrainingPackStore(
+    (s) => s.isFreeCamTrajectoryTesting
+  );
+  const isTestingSingleShot = useStaticTrainingPackStore((s) => s.isTestingSingleShot);
 
   void editVarVersion;
 
@@ -45,34 +61,35 @@ export const StaticTrainingPackHUD: React.FC<StaticTrainingPackHUDProps> = ({
 
   if (!shot) return null;
 
-  const subModeTitleMap: Record<string, string> = {
-    'car-heading': '1. CAR HEADING & LOCATION',
-    'car-speed': '2. CAR SPEED & DIRECTION',
-    'ball-speed': '3. BALL SPEED & LOCATION',
-    'free-cam': '4. FREE CAMERA INSPECTOR',
-  };
+  const shotNumberText = `#${String(safeIdx + 1).padStart(2, '0')}`;
+  const isUnlimitedBoost = Boolean(shot.car.unlimitedBoost);
+  const boostAmount = Math.round(shot.car.initialBoost ?? 100);
+  const hasFlip = Boolean(shot.car.snapToGround || shot.car.hasFlip !== false);
+
+  const normalTextColor = isLight ? 'text-neutral-900' : 'text-neutral-100';
 
   return (
     <div
       data-ui-element="static-training-pack-hud"
-      className="absolute top-16 left-1/2 -translate-x-1/2 z-30 pointer-events-none select-none flex flex-col items-center gap-1.5"
+      className="absolute top-14 left-1/2 -translate-x-1/2 z-30 pointer-events-none select-none flex flex-col items-center gap-1.5"
     >
       <div
-        className={`px-4 py-1.5 rounded-xl border font-mono text-xs flex items-center gap-3 backdrop-blur-md shadow-lg ${
+        className={`px-4 py-2 rounded-xl border font-mono text-xs flex items-center gap-4 backdrop-blur-md shadow-lg ${
           isLight
             ? 'bg-white/90 border-neutral-300 text-neutral-900'
             : 'bg-neutral-950/85 border-neutral-700/80 text-neutral-100'
         }`}
       >
-        <span className="font-bold text-cyan-400">
-          SHOT {safeIdx + 1}/{items.length}
+        {/* 1. Shot Number (#00 only) */}
+        <span className="text-base font-extrabold tracking-tight text-cyan-400">
+          {shotNumberText}
         </span>
-        <span className="font-sans font-bold truncate max-w-[180px]">{shot.name}</span>
 
-        <span className="opacity-40">|</span>
+        <span className="opacity-30">|</span>
 
-        {sessionMode === 'play' ? (
-          <>
+        {/* 2. Center: 4 Mode Icons in Edit Mode, or Timer in Play Mode / Single-Shot Test */}
+        {sessionMode === 'play' || isTestingSingleShot ? (
+          <div className="flex items-center gap-3">
             <span
               className={`font-bold tabular-nums ${
                 isOvertimeWaitGround
@@ -83,41 +100,79 @@ export const StaticTrainingPackHUD: React.FC<StaticTrainingPackHUDProps> = ({
               }`}
             >
               {isOvertimeWaitGround
-                ? '0.0s (OVERTIME - KEEP BALL UP!)'
-                : `TIMER ${remainingTimeoutSec.toFixed(1)}s`}
+                ? '0.0s (OVERTIME)'
+                : `${remainingTimeoutSec.toFixed(1)}s`}
             </span>
 
-            <span className="opacity-40">|</span>
-
-            {!isShotLaunched ? (
-              <span className="text-amber-300 font-bold animate-pulse">
+            {!isShotLaunched && (
+              <span className="text-amber-300 font-bold animate-pulse text-[11px]">
                 {downCounterEnabled && activeCountdownSec > 0
                   ? `COUNTDOWN ${activeCountdownSec}...`
-                  : 'PRESS ANY INPUT TO START'}
-              </span>
-            ) : (
-              <span className="text-[11px] opacity-80">
-                [R] Reset • [ / ] Prev/Next • [TAB] Panel
+                  : 'READY'}
               </span>
             )}
-          </>
+            {isTestingSingleShot && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 font-bold">
+                TEST SHOT [G]
+              </span>
+            )}
+          </div>
         ) : (
-          <>
-            <span className="font-bold text-amber-400">
-              {subModeTitleMap[editSubMode] || editSubMode}
-            </span>
-            <span className="opacity-40">|</span>
-            <span className="text-[11px] opacity-85">
-              Car: {Math.round(shot.car.speed)} UU/s{' '}
-              {shot.car.snapToGround ? '(SNAP 60f)' : ''} • Boost:{' '}
-              {shot.car.unlimitedBoost ? 'INF' : `${Math.round(shot.car.initialBoost)}%`} • Ball:{' '}
-              {shot.ball.kickoffState ? 'KICKOFF FREEZE' : `${Math.round(shot.ball.speed)} UU/s`}
-            </span>
-          </>
+          <div className="flex items-center gap-1.5">
+            {MODE_ICONS.map((m) => {
+              const active = editSubMode === m.id;
+              return (
+                <div
+                  key={m.id}
+                  title={m.title}
+                  className={`p-1.5 rounded-lg border transition-all flex items-center justify-center ${
+                    active
+                      ? isLight
+                        ? 'bg-amber-500 border-amber-600 text-white shadow-sm scale-105'
+                        : 'bg-amber-400/25 border-amber-400 text-amber-300 shadow-[0_0_10px_rgba(251,191,36,0.35)] scale-105'
+                      : isLight
+                      ? 'bg-neutral-100/70 border-neutral-200 text-neutral-400 opacity-50'
+                      : 'bg-neutral-900/60 border-neutral-800 text-neutral-500 opacity-45'
+                  }`}
+                >
+                  {m.icon}
+                </div>
+              );
+            })}
+            {isFreeCamTrajectoryTesting && (
+              <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-sky-500/20 border border-sky-400/40 text-sky-300 font-bold animate-pulse">
+                TRAJ TEST [T]
+              </span>
+            )}
+          </div>
         )}
+
+        <span className="opacity-30">|</span>
+
+        {/* 3. Right Side: Two Rows (Row 1 = Boost, Row 2 = Flip) */}
+        <div className="flex flex-col items-end justify-center leading-tight min-w-[72px]">
+          <div className="flex items-center gap-1.5 text-[11px] font-bold">
+            <span className="opacity-60 text-[10px]">BOOST</span>
+            {isUnlimitedBoost ? (
+              <span className="text-purple-400 font-extrabold">INF</span>
+            ) : boostAmount <= 0 ? (
+              <span className="text-rose-500 font-extrabold">0</span>
+            ) : (
+              <span className={`font-extrabold ${normalTextColor}`}>{boostAmount}</span>
+            )}
+          </div>
+          <div className="text-[10px] font-extrabold tracking-wider mt-0.5">
+            {hasFlip ? (
+              <span className={normalTextColor}>HAS FLIP</span>
+            ) : (
+              <span className="text-orange-400">NO FLIP</span>
+            )}
+          </div>
+        </div>
       </div>
 
-      {sessionMode === 'edit' && (
+      {/* Bottom Concise Shortcut Line */}
+      {sessionMode === 'edit' && !isTestingSingleShot && (
         <div
           className={`px-3 py-1 rounded-lg border font-mono text-[10px] backdrop-blur-md ${
             isLight
@@ -125,14 +180,7 @@ export const StaticTrainingPackHUD: React.FC<StaticTrainingPackHUDProps> = ({
               : 'bg-neutral-900/80 border-neutral-800 text-neutral-300'
           }`}
         >
-          {editSubMode === 'car-heading' &&
-            '[9/0/R-Click] Sub-Mode • [WASD/Space/V] Move Car (V at ground = Snap 60f) • [Drag] Heading • [Q/E] Roll • [O/P] Boost (P at 100 = INF)'}
-          {editSubMode === 'car-speed' &&
-            '[9/0/R-Click] Sub-Mode • [WASD/Space/V] Move Car • [Drag] Car Speed Dir • [[ / ]] Car Speed • [O/P] Boost'}
-          {editSubMode === 'ball-speed' &&
-            '[9/0/R-Click] Sub-Mode • [WASD/Space/V] Move Ball • [Drag] Ball Dir • [[ / ]] Ball Speed ([ at 0 = Kickoff Freeze)'}
-          {editSubMode === 'free-cam' &&
-            '[9/0/R-Click] Sub-Mode • [WASD + Space + V] Fly Free Camera • [Drag] Look Around • [TAB] Toggle Editor Panel'}
+          9/0 Cycle Selection · V to Move Down · O/P Boost · [/] Speed
         </div>
       )}
     </div>

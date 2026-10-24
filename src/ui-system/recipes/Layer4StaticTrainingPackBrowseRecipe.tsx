@@ -11,6 +11,7 @@ import {
   Check,
   X,
   FolderOpen,
+  Save,
 } from 'lucide-react';
 import { PanelContainer, PanelHeader, PanelContent, PanelFooter } from '../layout/Panel';
 import { Badge } from '../primitives/Badge';
@@ -87,16 +88,21 @@ export const Layer4StaticTrainingPackBrowseRecipe: React.FC<Layer4StaticTraining
     setIsCreatingPack(false);
   };
 
+  const selectedMeta =
+    packs.find((p) => p.uuid === selectedPackUuid) || activePack?.metadata || null;
+
+  const isMetadataDirty = Boolean(
+    selectedMeta &&
+      ((editTitle.trim() || 'Untitled Training Pack') !== selectedMeta.title ||
+        editDescription.trim() !== (selectedMeta.description || ''))
+  );
+
   const handleSaveMetadata = async () => {
-    if (!activePack) return;
+    if (!selectedMeta || !isMetadataDirty) return;
     const trimmedTitle = editTitle.trim() || 'Untitled Training Pack';
     const trimmedDesc = editDescription.trim();
-    if (
-      trimmedTitle !== activePack.metadata.title ||
-      trimmedDesc !== activePack.metadata.description
-    ) {
-      await updatePackInfo(activePack.metadata.uuid, trimmedTitle, trimmedDesc);
-    }
+    await updatePackInfo(selectedMeta.uuid, trimmedTitle, trimmedDesc);
+    setHoveredDesc(`Saved global metadata for "${trimmedTitle}"`);
   };
 
   const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -111,9 +117,6 @@ export const Layer4StaticTrainingPackBrowseRecipe: React.FC<Layer4StaticTraining
       e.target.value = '';
     }
   };
-
-  const selectedMeta =
-    packs.find((p) => p.uuid === selectedPackUuid) || activePack?.metadata || null;
 
   return (
     <PanelContainer
@@ -350,12 +353,38 @@ export const Layer4StaticTrainingPackBrowseRecipe: React.FC<Layer4StaticTraining
                     </div>
 
                     <div className="flex flex-col gap-1">
-                      <label className="text-[10px] font-semibold opacity-70">Pack Name</label>
+                      <div className="flex items-center justify-between">
+                        <label className="text-[10px] font-semibold opacity-70">Pack Name</label>
+                        <button
+                          type="button"
+                          disabled={!isMetadataDirty}
+                          onClick={handleSaveMetadata}
+                          onMouseEnter={() =>
+                            setHoveredDesc(
+                              isMetadataDirty
+                                ? 'Save updated Pack Name & Description to global metadata.'
+                                : 'No unsaved metadata changes.'
+                            )
+                          }
+                          onMouseLeave={() => setHoveredDesc(null)}
+                          className={`flex items-center gap-1 px-2.5 py-0.5 rounded-md border text-[10px] font-bold transition-all ${
+                            isMetadataDirty
+                              ? isLight
+                                ? 'bg-neutral-900 hover:bg-neutral-800 border-neutral-900 text-white cursor-pointer active:scale-95'
+                                : 'bg-emerald-500 hover:bg-emerald-400 border-emerald-400 text-neutral-950 cursor-pointer active:scale-95'
+                              : isLight
+                              ? 'bg-neutral-100 border-neutral-200 text-neutral-400 opacity-50 cursor-not-allowed'
+                              : 'bg-neutral-850 border-neutral-800 text-neutral-500 opacity-50 cursor-not-allowed'
+                          }`}
+                        >
+                          <Save className="h-3 w-3" />
+                          <span>Save</span>
+                        </button>
+                      </div>
                       <input
                         type="text"
                         value={editTitle}
                         onChange={(e) => setEditTitle(e.target.value)}
-                        onBlur={handleSaveMetadata}
                         className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold outline-none transition-colors ${
                           isLight
                             ? 'bg-neutral-50 focus:bg-white border-neutral-300 text-neutral-900'
@@ -370,7 +399,6 @@ export const Layer4StaticTrainingPackBrowseRecipe: React.FC<Layer4StaticTraining
                         rows={2}
                         value={editDescription}
                         onChange={(e) => setEditDescription(e.target.value)}
-                        onBlur={handleSaveMetadata}
                         className={`px-2.5 py-1.5 rounded-lg border text-xs outline-none resize-none transition-colors ${
                           isLight
                             ? 'bg-neutral-50 focus:bg-white border-neutral-300 text-neutral-800'
@@ -439,7 +467,7 @@ export const Layer4StaticTrainingPackBrowseRecipe: React.FC<Layer4StaticTraining
                   </div>
                 </div>
 
-                {/* Primary Pack Actions: Play, Edit, Export, Delete (with Double-Check) */}
+                {/* Primary Pack Actions: Play, Edit, Save, Export, Delete (with Double-Check) */}
                 <div className="flex flex-col gap-2 pt-3 border-t border-neutral-500/15 mt-2">
                   <div className="grid grid-cols-2 gap-2">
                     <button
@@ -482,24 +510,48 @@ export const Layer4StaticTrainingPackBrowseRecipe: React.FC<Layer4StaticTraining
                   </div>
 
                   <div className="flex items-center justify-between gap-2">
-                    <button
-                      type="button"
-                      onClick={() => exportPackRCS(selectedMeta.uuid)}
-                      onMouseEnter={() =>
-                        setHoveredDesc(
-                          'Export this pack as a GZIP-compressed <Title>_<UUID>.RCSPack file.'
-                        )
-                      }
-                      onMouseLeave={() => setHoveredDesc(null)}
-                      className={`flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg border text-[11px] font-semibold transition-all cursor-pointer ${
-                        isLight
-                          ? 'bg-neutral-50 hover:bg-neutral-100 border-neutral-300 text-neutral-700'
-                          : 'bg-neutral-850 hover:bg-neutral-800 border-neutral-700 text-neutral-300'
-                      }`}
-                    >
-                      <Download className="h-3.5 w-3.5" />
-                      <span>Export .RCSPack</span>
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        disabled={!isMetadataDirty}
+                        onClick={handleSaveMetadata}
+                        onMouseEnter={() =>
+                          setHoveredDesc('Save global pack metadata (Pack Name & Description).')
+                        }
+                        onMouseLeave={() => setHoveredDesc(null)}
+                        className={`flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg border text-[11px] font-semibold transition-all ${
+                          isMetadataDirty
+                            ? isLight
+                              ? 'bg-neutral-900 hover:bg-neutral-800 border-neutral-900 text-white cursor-pointer'
+                              : 'bg-emerald-500 hover:bg-emerald-400 border-emerald-400 text-neutral-950 font-bold cursor-pointer'
+                            : isLight
+                            ? 'bg-neutral-50 border-neutral-200 text-neutral-400 opacity-50 cursor-not-allowed'
+                            : 'bg-neutral-850 border-neutral-800 text-neutral-500 opacity-50 cursor-not-allowed'
+                        }`}
+                      >
+                        <Save className="h-3.5 w-3.5" />
+                        <span>Save</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => exportPackRCS(selectedMeta.uuid)}
+                        onMouseEnter={() =>
+                          setHoveredDesc(
+                            'Export this pack as a GZIP-compressed <Title>_<UUID>.RCSPack file.'
+                          )
+                        }
+                        onMouseLeave={() => setHoveredDesc(null)}
+                        className={`flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg border text-[11px] font-semibold transition-all cursor-pointer ${
+                          isLight
+                            ? 'bg-neutral-50 hover:bg-neutral-100 border-neutral-300 text-neutral-700'
+                            : 'bg-neutral-850 hover:bg-neutral-800 border-neutral-700 text-neutral-300'
+                        }`}
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                        <span>Export .RCSPack</span>
+                      </button>
+                    </div>
 
                     {confirmDeleteUuid === selectedMeta.uuid ? (
                       <div className="flex items-center gap-1.5">

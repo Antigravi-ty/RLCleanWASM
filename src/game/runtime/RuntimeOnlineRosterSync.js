@@ -5,6 +5,7 @@
  */
 
 import { CAR_COLOR_SLOTS } from '../../config/vehicleConstants.js';
+import { setNameTagRuntimeState } from '../../config/nameTagConfig.ts';
 import { useAppStore } from '../../stores/appStore';
 import { useQuickNotificationStore } from '../../stores/quickNotificationStore';
 import {
@@ -89,6 +90,7 @@ export async function applyRuntimeRosterSnapshot(runtime, roster) {
 
   await r.arena?.ensureOpponent?.();
   const connectedPeers = [];
+  const nameTagEntries = [];
 
   for (const p of roster.players) {
     const cIdx = p.entityId;
@@ -96,11 +98,18 @@ export async function applyRuntimeRosterSnapshot(runtime, roster) {
     const preset = p.visualId || 'octane';
     const hitbox = p.hitboxId || preset;
     const team = p.team ?? (cIdx % 2);
+    const displayName = p.name || `Player ${cIdx + 1}`;
+
+    nameTagEntries.push({
+      carIndex: cIdx,
+      name: displayName,
+      team: team === 1 ? 1 : 0,
+    });
 
     if (cIdx !== r.playerCarIndex) {
       connectedPeers.push({
         id: p.sessionId || `peer_${cIdx}`,
-        name: p.name || `Player ${cIdx + 1}`,
+        name: displayName,
         carIndex: cIdx,
         pingMs: Math.round(r.networkReconciler?.metrics?.rttMs || 15),
         isReady: Boolean(p.ready)
@@ -152,6 +161,11 @@ export async function applyRuntimeRosterSnapshot(runtime, roster) {
       r.arena?.setCarTeam?.(cIdx, team);
     }
   }
+
+  setNameTagRuntimeState({
+    isMultiplayerOrMultiCarMode: true,
+    carEntries: nameTagEntries,
+  });
 
   if (useAppStore && typeof useAppStore.getState === 'function') {
     useAppStore.getState().setOnlineSession({ connectedPeers });

@@ -12,6 +12,8 @@ export const EDIT_SUB_MODES_ORDER: EditSubMode[] = [
   'free-cam',
 ];
 
+export const MAX_SHOTS_PER_PACK = 99;
+
 export interface StaticTrainingCarConfig {
   /** World position in RocketSim UU: [x, y, z] */
   location: [number, number, number];
@@ -32,9 +34,15 @@ export interface StaticTrainingCarConfig {
    * so wheel suspension stabilizes before spawning the ball and launching.
    */
   snapToGround: boolean;
+  /**
+   * Whether the car spawns with an available flip/dodge when airborne.
+   * Default: true. When snapToGround is false and hasFlip is false, the car spawns
+   * in mid-air without a flip opportunity.
+   */
+  hasFlip: boolean;
   /** Initial boost reserve (0 .. 100) */
   initialBoost: number;
-  /** Unlimited boost flag (entered by pressing P again when initialBoost === 100) */
+  /** Unlimited boost flag (default true -> Limit Boost Amount toggle is OFF by default) */
   unlimitedBoost: boolean;
 }
 
@@ -65,7 +73,7 @@ export interface StaticTrainingShotItem {
   id: string;
   index: number;
   name: string;
-  /** Shot timeout in seconds (default: 10) */
+  /** Shot timeout in seconds (default: 10, max: 60) */
   timeoutSeconds: number;
   car: StaticTrainingCarConfig;
   ball: StaticTrainingBallConfig;
@@ -114,6 +122,7 @@ export function createDefaultShotItem(index = 0): StaticTrainingShotItem {
       speedYaw: Math.PI / 2,
       speedPitch: 0,
       snapToGround: true,
+      hasFlip: true,
       initialBoost: 100,
       unlimitedBoost: true,
     },
@@ -152,7 +161,7 @@ export function cloneShotItem(
     index: idx,
     name: item?.name || `Shot ${idx + 1}`,
     timeoutSeconds: Number.isFinite(item?.timeoutSeconds)
-      ? Math.max(1, Math.min(120, Number(item.timeoutSeconds)))
+      ? Math.max(1, Math.min(60, Number(item.timeoutSeconds)))
       : 10,
     car: {
       location: [
@@ -167,8 +176,10 @@ export function cloneShotItem(
       speedYaw: Number(rawCar.speedYaw ?? rawCar.headingYaw ?? Math.PI / 2),
       speedPitch: Number(rawCar.speedPitch ?? rawCar.headingPitch ?? 0),
       snapToGround: Boolean(rawCar.snapToGround ?? true),
+      hasFlip: rawCar.hasFlip !== undefined ? Boolean(rawCar.hasFlip) : true,
       initialBoost: Math.max(0, Math.min(100, Number(rawCar.initialBoost ?? 100))),
-      unlimitedBoost: Boolean(rawCar.unlimitedBoost ?? false),
+      unlimitedBoost:
+        rawCar.unlimitedBoost !== undefined ? Boolean(rawCar.unlimitedBoost) : true,
     },
     ball: {
       location: [
@@ -190,6 +201,70 @@ export function cloneShotItem(
   };
 }
 
+export function areShotItemsEqual(
+  a: StaticTrainingShotItem | null | undefined,
+  b: StaticTrainingShotItem | null | undefined
+): boolean {
+  if (!a || !b) return a === b;
+  const eps = 1e-4;
+  const eqNum = (x: number, y: number) => Math.abs((x || 0) - (y || 0)) < eps;
+  if (a.name !== b.name) return false;
+  if (!eqNum(a.timeoutSeconds, b.timeoutSeconds)) return false;
+
+  const ca = a.car;
+  const cb = b.car;
+  if (
+    !eqNum(ca.location[0], cb.location[0]) ||
+    !eqNum(ca.location[1], cb.location[1]) ||
+    !eqNum(ca.location[2], cb.location[2]) ||
+    !eqNum(ca.headingYaw, cb.headingYaw) ||
+    !eqNum(ca.headingPitch, cb.headingPitch) ||
+    !eqNum(ca.airRoll, cb.airRoll) ||
+    !eqNum(ca.speed, cb.speed) ||
+    !eqNum(ca.speedYaw, cb.speedYaw) ||
+    !eqNum(ca.speedPitch, cb.speedPitch) ||
+    Boolean(ca.snapToGround) !== Boolean(cb.snapToGround) ||
+    Boolean(ca.hasFlip ?? true) !== Boolean(cb.hasFlip ?? true) ||
+    !eqNum(ca.initialBoost, cb.initialBoost) ||
+    Boolean(ca.unlimitedBoost) !== Boolean(cb.unlimitedBoost)
+  ) {
+    return false;
+  }
+
+  const ba = a.ball;
+  const bb = b.ball;
+  if (
+    !eqNum(ba.location[0], bb.location[0]) ||
+    !eqNum(ba.location[1], bb.location[1]) ||
+    !eqNum(ba.location[2], bb.location[2]) ||
+    !eqNum(ba.speed, bb.speed) ||
+    !eqNum(ba.speedYaw, bb.speedYaw) ||
+    !eqNum(ba.speedPitch, bb.speedPitch) ||
+    Boolean(ba.kickoffState) !== Boolean(bb.kickoffState) ||
+    Boolean(ba.randomAngularVelocity) !== Boolean(bb.randomAngularVelocity) ||
+    !eqNum(ba.angularVelocity[0], bb.angularVelocity[0]) ||
+    !eqNum(ba.angularVelocity[1], bb.angularVelocity[1]) ||
+    !eqNum(ba.angularVelocity[2], bb.angularVelocity[2])
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+export function areShotListsEqual(
+  a: StaticTrainingShotItem[],
+  b: StaticTrainingShotItem[]
+): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].id !== b[i].id || !areShotItemsEqual(a[i], b[i])) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export function createStarterShots(uuid = 'starter-aerial-striker-pack'): StaticTrainingShotItem[] {
   return [
     {
@@ -206,6 +281,7 @@ export function createStarterShots(uuid = 'starter-aerial-striker-pack'): Static
         speedYaw: Math.PI / 2,
         speedPitch: 0,
         snapToGround: true,
+        hasFlip: true,
         initialBoost: 100,
         unlimitedBoost: true,
       },
@@ -233,6 +309,7 @@ export function createStarterShots(uuid = 'starter-aerial-striker-pack'): Static
         speedYaw: 1.18,
         speedPitch: 0,
         snapToGround: true,
+        hasFlip: true,
         initialBoost: 100,
         unlimitedBoost: true,
       },
@@ -260,6 +337,7 @@ export function createStarterShots(uuid = 'starter-aerial-striker-pack'): Static
         speedYaw: 1.72,
         speedPitch: 0,
         snapToGround: true,
+        hasFlip: true,
         initialBoost: 100,
         unlimitedBoost: true,
       },

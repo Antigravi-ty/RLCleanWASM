@@ -13,6 +13,7 @@ import {
   Shield,
   Sliders,
   Sparkles,
+  Tag,
   Target,
 } from 'lucide-react';
 import {
@@ -30,6 +31,7 @@ import {
   REACHABILITY_TUNER_PRESET,
   REPLAY_DIRECTOR_TUNER_PRESET,
   REPLAY_VIEWER_PRESET,
+  NAME_TAG_TUNER_PRESET,
   CAMERA_DETERMINISM_PRESET,
 } from '../../stores/floatingPresets';
 
@@ -64,6 +66,10 @@ export interface FloatingWindowIconProps {
 export const getFloatingWindowIcon = (category?: string, id?: string, extraClass: string = 'h-4 w-4 shrink-0') => {
   const normId = (id || '').toLowerCase();
   const normCat = (category || '').toLowerCase();
+
+  if (normId === NAME_TAG_TUNER_PRESET.id || normId.includes('name-tag') || normCat === 'nametagtuner') {
+    return <Tag className={`${extraClass} text-sky-500 dark:text-sky-400`} />;
+  }
 
   if (normId === REPLAY_VIEWER_PRESET.id || normId.includes('replay-viewer') || normCat === 'replayviewer') {
     return <Film className={`${extraClass} text-sky-500 dark:text-sky-400`} />;

@@ -60,71 +60,6 @@ function update3DArrowMesh(arrowGroup, originThree, dirThree, totalLength, highl
   mat.opacity = highlight ? 0.96 : 0.72;
 }
 
-function createAnnotationSprite() {
-  const canvas = typeof document !== 'undefined' ? document.createElement('canvas') : null;
-  if (canvas) {
-    canvas.width = 512;
-    canvas.height = 144;
-  }
-  const texture = canvas ? new THREE.CanvasTexture(canvas) : null;
-  if (texture) {
-    texture.minFilter = THREE.LinearFilter;
-    texture.magFilter = THREE.LinearFilter;
-  }
-  const mat = new THREE.SpriteMaterial({
-    map: texture,
-    transparent: true,
-    depthTest: false,
-    depthWrite: false,
-  });
-  const sprite = new THREE.Sprite(mat);
-  sprite.scale.set(420, 118, 1);
-  sprite.renderOrder = 999;
-  sprite.userData = { canvas, texture, lastTextKey: '' };
-  return sprite;
-}
-
-function updateAnnotationSpriteText(sprite, title, line1, line2, accentColor = '#38bdf8') {
-  if (!sprite?.userData?.canvas) return;
-  const key = `${title}|${line1}|${line2}|${accentColor}`;
-  if (sprite.userData.lastTextKey === key) return;
-  sprite.userData.lastTextKey = key;
-
-  const canvas = sprite.userData.canvas;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return;
-
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  // Rounded dark pill background
-  ctx.fillStyle = 'rgba(10, 12, 16, 0.86)';
-  ctx.strokeStyle = accentColor;
-  ctx.lineWidth = 4;
-  ctx.beginPath();
-  ctx.roundRect(8, 8, canvas.width - 16, canvas.height - 16, 22);
-  ctx.fill();
-  ctx.stroke();
-
-  // Title
-  ctx.fillStyle = accentColor;
-  ctx.font = 'bold 28px "JetBrains Mono", "SF Mono", monospace';
-  ctx.fillText(title, 28, 46);
-
-  // Line 1
-  ctx.fillStyle = '#f5f5f5';
-  ctx.font = '600 23px "JetBrains Mono", "SF Mono", monospace';
-  ctx.fillText(line1, 28, 84);
-
-  // Line 2
-  ctx.fillStyle = '#a3a3a3';
-  ctx.font = '500 20px "JetBrains Mono", "SF Mono", monospace';
-  ctx.fillText(line2, 28, 116);
-
-  if (sprite.userData.texture) {
-    sprite.userData.texture.needsUpdate = true;
-  }
-}
-
 export class StaticTrainingVisuals {
   constructor(scene) {
     this.scene = scene;
@@ -205,12 +140,6 @@ export class StaticTrainingVisuals {
     this.ballDropLine = new THREE.Line(this.ballDropLineGeo, dropLineMat);
     this.root.add(this.ballDropLine);
 
-    // 6. 3D Floating Annotations (Car & Ball labels for Free Camera & Edit inspection)
-    this.carAnnotation = createAnnotationSprite();
-    this.ballAnnotation = createAnnotationSprite();
-    this.root.add(this.carAnnotation);
-    this.root.add(this.ballAnnotation);
-
     if (this.scene) {
       this.scene.add(this.root);
     }
@@ -237,7 +166,7 @@ export class StaticTrainingVisuals {
   }
 
   /**
-   * Updates all 3D arrows and annotations from the current shot item state.
+   * Updates all 3D arrows and ground footprint rings from the current shot item state.
    * @param {object} shot - StaticTrainingShotItem
    * @param {object} options - { isEditMode, editSubMode, showPlayArrows }
    */
@@ -362,16 +291,14 @@ export class StaticTrainingVisuals {
       this.ballKickoffHalo.position.copy(ballPosThree);
     }
 
-    // 4. Update Ground Rings, Drop-Lines, and 3D Annotations (Edit Mode)
-    const showAnnotations = Boolean(isEditMode);
-    this.carGroundRing.visible = showAnnotations;
-    this.ballGroundRing.visible = showAnnotations;
-    this.carDropLine.visible = showAnnotations;
-    this.ballDropLine.visible = showAnnotations;
-    this.carAnnotation.visible = showAnnotations;
-    this.ballAnnotation.visible = showAnnotations;
+    // 4. Update Ground Rings & Drop-Lines (Edit Mode)
+    const showFootprints = Boolean(isEditMode);
+    this.carGroundRing.visible = showFootprints;
+    this.ballGroundRing.visible = showFootprints;
+    this.carDropLine.visible = showFootprints;
+    this.ballDropLine.visible = showFootprints;
 
-    if (showAnnotations) {
+    if (showFootprints) {
       this.carGroundRing.position.set(carLoc[0], 3, carLoc[1]);
       this.ballGroundRing.position.set(ballLoc[0], 3, ballLoc[1]);
 
@@ -384,41 +311,6 @@ export class StaticTrainingVisuals {
       ballLinePos.setXYZ(0, ballLoc[0], 3, ballLoc[1]);
       ballLinePos.setXYZ(1, ballLoc[0], ballLoc[2], ballLoc[1]);
       ballLinePos.needsUpdate = true;
-
-      this.carAnnotation.position.set(carLoc[0], carLoc[2] + 155, carLoc[1]);
-      const carKph = Math.round(carSpeedVal * 0.036);
-      const boostStr = car.unlimitedBoost ? 'UNLIMITED' : `${Math.round(car.initialBoost)}%`;
-      updateAnnotationSpriteText(
-        this.carAnnotation,
-        editSubMode === 'car-heading'
-          ? 'CAR [HEADING ACTIVE]'
-          : editSubMode === 'car-speed'
-          ? 'CAR [SPEED ACTIVE]'
-          : 'CAR SPAWN',
-        `Spd: ${Math.round(carSpeedVal)} UU/s (${carKph} KPH) | Boost: ${boostStr}`,
-        `Pos: [${Math.round(carLoc[0])}, ${Math.round(carLoc[1])}, ${Math.round(carLoc[2])}] ${
-          car.snapToGround ? '• SNAP GROUND' : '• AIR'
-        }`,
-        editSubMode === 'car-speed' ? '#f59e0b' : '#38bdf8'
-      );
-
-      this.ballAnnotation.position.set(ballLoc[0], ballLoc[2] + 185, ballLoc[1]);
-      const ballKph = Math.round(ballSpeedVal * 0.036);
-      updateAnnotationSpriteText(
-        this.ballAnnotation,
-        ball.kickoffState
-          ? 'BALL [KICKOFF FROZEN]'
-          : editSubMode === 'ball-speed'
-          ? 'BALL [SPEED ACTIVE]'
-          : 'BALL SPAWN',
-        ball.kickoffState
-          ? 'Kickoff State ON (Stationary until touched)'
-          : `Spd: ${Math.round(ballSpeedVal)} UU/s (${ballKph} KPH)`,
-        `Pos: [${Math.round(ballLoc[0])}, ${Math.round(ballLoc[1])}, ${Math.round(ballLoc[2])}] • Spin: ${
-          ball.randomAngularVelocity ? 'Random' : 'Manual'
-        }`,
-        ball.kickoffState ? '#22d3ee' : '#10b981'
-      );
     }
   }
 

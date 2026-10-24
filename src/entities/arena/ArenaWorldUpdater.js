@@ -133,6 +133,7 @@ export function updateArenaFrame(arena, prevState, currState, alpha, delta = 0, 
   arena.lighting.updateShadows(arena.cars, arena.ball, arena.camera);
   updateSkyboxFrame(actualDelta, arena.lighting?._shadowDir);
   arena.boostPadSystem?.update(currState, undefined, actualDelta, arena.camera);
+  arena.nameTagSystem?.update(arena, header.numCars, arena.camera);
   updateBoostVisuals(
     arena.cars,
     arena.carBoosts,

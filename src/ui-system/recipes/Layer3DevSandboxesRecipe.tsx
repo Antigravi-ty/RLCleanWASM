@@ -1,28 +1,29 @@
 import React, { useState } from 'react';
-import { Bot, Cpu, Play, ArrowRight, Info } from 'lucide-react';
+import { Bot, Cpu, ArrowRight, Info } from 'lucide-react';
 import { PanelContainer, PanelHeader, PanelContent, PanelFooter } from '../layout/Panel';
 import { VStack } from '../layout/VStack';
 import { DEFAULT_PANEL_SIZING } from '../tokens';
 import { DEV_TEST_LAB_PRESET, EXPERIMENTAL_MULTI_BOTS_PRESET } from '../../stores/floatingPresets';
-import { floatingStore } from '../../stores/floatingStore';
 import { useAppStore } from '../../stores/appStore';
 import { FloatingWindowCard } from './settings/components/FloatingWindowCard';
 
 export interface Layer3DevSandboxesRecipeProps {
   isLight?: boolean;
   onBack?: () => void;
+  onNavigateSubsystemIsolation?: () => void;
   onNavigateExpMultiBots?: () => void;
 }
 
 /**
  * [Recipe] Layer 3 Developer Sandboxes & Isolation Labs
  * Provides dedicated actions to Enter Lab or Spawn Floating Controllers for:
- * 1. Subsystem Isolation & MVP Lab (Probes, Multi-World Ghost, State Replay, 90s Match, Goal Replay)
+ * 1. Subsystem Isolation & MVP Lab (Probes, Multi-World Ghost, State Replay, 90s Match, Goal Replay & Kickoff Duel)
  * 2. Experimental Multiple Bots Mode (Up to 3v3 Native SafeTensors Nexto & Necto)
  */
 export const Layer3DevSandboxesRecipe: React.FC<Layer3DevSandboxesRecipeProps> = ({
   isLight = false,
   onBack,
+  onNavigateSubsystemIsolation,
   onNavigateExpMultiBots,
 }) => {
   const [hoveredDesc, setHoveredDesc] = useState<string | null>(null);
@@ -37,7 +38,7 @@ export const Layer3DevSandboxesRecipe: React.FC<Layer3DevSandboxesRecipeProps> =
 
       <PanelContent scrollable className="p-6">
         <VStack gap="md" isLight={isLight}>
-          {/* 1. Subsystem Isolation & MVP Lab: Enter Lab */}
+          {/* 1. Subsystem Isolation & MVP Lab: Select Subsystem Bench */}
           <div
             className={`flex items-center justify-between w-full p-3.5 rounded-xl border transition-colors select-none ${
               isLight
@@ -46,7 +47,7 @@ export const Layer3DevSandboxesRecipe: React.FC<Layer3DevSandboxesRecipeProps> =
             }`}
             onMouseEnter={() =>
               setHoveredDesc(
-                'Enter Subsystem Isolation & MVP Lab: Verifies isolated basic components (Probes, Multi-World Ghost, State Replay, 90s Match, Goal Replay & 4-Model Kickoff Duel) before workflow integration.'
+                'Configure & Enter Subsystem Isolation Lab: Choose which of the 6 isolated subsystems (Probes, Multi-World Ghost, State Replay, 90s Match, Goal Replay & 4-Model Kickoff Duel) to test.'
               )
             }
             onMouseLeave={() => setHoveredDesc(null)}
@@ -63,15 +64,18 @@ export const Layer3DevSandboxesRecipe: React.FC<Layer3DevSandboxesRecipeProps> =
                   </span>
                 </div>
                 <span className={`text-xs mt-0.5 line-clamp-2 ${isLight ? 'text-neutral-600' : 'text-neutral-300'}`}>
-                  Isolated verification for Probes, Multi-World Ghost, State Replay, 90s Match, Goal Replay & 4-Model Kickoff Duel
+                  Select isolated test bench: Probes, Multi-World Ghost, State Replay, 90s Match, Goal Replay &amp; Kickoff Duel
                 </span>
               </div>
             </div>
             <button
               type="button"
               onClick={() => {
-                floatingStore.setOpacity(70);
-                useAppStore.getState().bridge.onStartDevTestLab?.();
+                if (onNavigateSubsystemIsolation) {
+                  onNavigateSubsystemIsolation();
+                } else {
+                  useAppStore.getState().navigate('dev-subsystem-isolation');
+                }
               }}
               className={`py-1.5 px-3.5 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 shrink-0 active:scale-95 ${
                 isLight
@@ -79,8 +83,8 @@ export const Layer3DevSandboxesRecipe: React.FC<Layer3DevSandboxesRecipeProps> =
                   : 'bg-amber-400 hover:bg-amber-300 border-amber-300 text-neutral-950'
               }`}
             >
-              <Play className="h-3.5 w-3.5 fill-current" />
-              <span>Enter Lab</span>
+              <span>Select Bench</span>
+              <ArrowRight className="h-3.5 w-3.5" />
             </button>
           </div>
 

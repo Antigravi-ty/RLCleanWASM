@@ -19,6 +19,7 @@ import { Badge } from '../primitives/Badge';
 import { Button } from '../primitives/Button';
 import { ProbesBenchPanel } from './dev-test-lab/ProbesBenchPanel';
 import { MultiGhostBenchPanel } from './dev-test-lab/MultiGhostBenchPanel';
+import { StateReplayBenchPanel } from './dev-test-lab/StateReplayBenchPanel';
 import { IncidentMatchBenchPanel } from './dev-test-lab/IncidentMatchBenchPanel';
 import { GoalReplayBenchPanel } from './dev-test-lab/GoalReplayBenchPanel';
 import { KickoffDuelBenchPanel } from './dev-test-lab/KickoffDuelBenchPanel';
@@ -33,9 +34,10 @@ export interface DeveloperTestLabFloatingWindowProps {
  * Declarative shell hosting UnderlineTabs for the isolated component verification benches:
  * 1. Probes (0G QE + Gravity Z-Hover)
  * 2. Multi Ghost (2..4 Parallel Worlds)
- * 3. 90s Match (MatchController & Overtime MVP)
- * 4. Goal Replay (Goal Incident & Podium MVP)
- * 5. Kickoff Duel (4 SafeTensors Models · 10 Pairings × 5 Slots + Action Diagnostics)
+ * 3. State Replay (TAS RingBuffer & Rewinder)
+ * 4. 90s Match (MatchController & Overtime MVP)
+ * 5. Goal Replay (Goal Incident & Podium MVP)
+ * 6. Kickoff Duel (4 SafeTensors Models · 10 Pairings × 5 Slots + Action Diagnostics)
  */
 export const DeveloperTestLabFloatingWindow: React.FC<DeveloperTestLabFloatingWindowProps> = ({
   isLight = false,
@@ -65,9 +67,10 @@ export const DeveloperTestLabFloatingWindow: React.FC<DeveloperTestLabFloatingWi
   const tabs: TabItem[] = [
     { id: 'probes', label: '1. Probes', icon: <Radio className="h-3.5 w-3.5" /> },
     { id: 'dual-world', label: '2. Multi Ghost', icon: <Layers className="h-3.5 w-3.5" /> },
-    { id: 'incident-match', label: '3. 90s Match', icon: <Zap className="h-3.5 w-3.5" /> },
-    { id: 'goal-replay', label: '4. Goal Replay', icon: <Film className="h-3.5 w-3.5" /> },
-    { id: 'kickoff-duel', label: '5. Kickoff Duel', icon: <Swords className="h-3.5 w-3.5" /> },
+    { id: 'state-replay', label: '3. State Replay', icon: <History className="h-3.5 w-3.5" /> },
+    { id: 'incident-match', label: '4. 90s Match', icon: <Zap className="h-3.5 w-3.5" /> },
+    { id: 'goal-replay', label: '5. Goal Replay', icon: <Film className="h-3.5 w-3.5" /> },
+    { id: 'kickoff-duel', label: '6. Kickoff Duel', icon: <Swords className="h-3.5 w-3.5" /> },
   ];
 
   const handleApplyAndRestart = () => {
@@ -163,6 +166,14 @@ export const DeveloperTestLabFloatingWindow: React.FC<DeveloperTestLabFloatingWi
           cardBg={cardBg}
           subPanelBg={subPanelBg}
           mutedText={mutedText}
+        />
+      )}
+
+      {selectedTab === 'state-replay' && (
+        <StateReplayBenchPanel
+          isLight={isLight}
+          cardBg={cardBg}
+          subPanelBg={subPanelBg}
         />
       )}
 

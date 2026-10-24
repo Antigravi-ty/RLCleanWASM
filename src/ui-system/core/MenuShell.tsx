@@ -31,6 +31,7 @@ import { Layer3CustomTrainingRecipe } from '../recipes/Layer3CustomTrainingRecip
 import { Layer3SelfTrainingRecipe } from '../recipes/Layer3SelfTrainingRecipe';
 import { Layer3ExpMultiBotsRecipe } from '../recipes/Layer3ExpMultiBotsRecipe';
 import { useExpMultiBotsStore } from '../../stores/expMultiBotsStore';
+import { Layer3DevSubsystemIsolationRecipe } from '../recipes/Layer3DevSubsystemIsolationRecipe';
 import { Layer3DevSandboxesRecipe } from '../recipes/Layer3DevSandboxesRecipe';
 import { Layer3DevActiveTunersRecipe } from '../recipes/Layer3DevActiveTunersRecipe';
 import { Layer3DevCalibratedPresetsRecipe } from '../recipes/Layer3DevCalibratedPresetsRecipe';
@@ -68,6 +69,7 @@ export const ROUTE_TO_PANEL_ID: Record<ActiveMenuRoute, MenuPanelId> = {
   'advanced-audio': 'layer4-advanced-audio',
   'event-and-triggerer': 'layer4-event-and-triggerer',
   'exp-multi-bots-config': 'layer3-exp-multi-bots',
+  'dev-subsystem-isolation': 'layer3-dev-subsystem-isolation',
   'dev-sandboxes': 'layer3-dev-sandboxes',
   'dev-active-tuners': 'layer3-dev-active-tuners',
   'dev-calibrated-presets': 'layer3-dev-calibrated-presets',
@@ -383,9 +385,7 @@ export const MenuShell: React.FC<MenuShellProps> = ({ inspectorSlot }) => {
             }}
             onStartEditSession={async (uuid) => {
               const store = useStaticTrainingPackStore.getState();
-              await store.selectPack(uuid);
-              store.setSessionMode('edit');
-              store.enterItemEditMode(0);
+              await store.beginEditSession(uuid);
               bridge.onStartStaticTrainingPack?.('edit');
               setLiveAnimPhase('expanded');
               navigate('static-training-pack-session');
@@ -510,10 +510,21 @@ export const MenuShell: React.FC<MenuShellProps> = ({ inspectorSlot }) => {
           <Layer3DevSandboxesRecipe
             isLight={isLight}
             onBack={goBack}
+            onNavigateSubsystemIsolation={() => {
+              navigate('dev-subsystem-isolation');
+            }}
             onNavigateExpMultiBots={() => {
               expConfigParentRef.current = 'dev-sandboxes';
               navigate('exp-multi-bots-config');
             }}
+          />
+        )}
+
+        {/* Layer 3: Subsystem Isolation Selection Menu */}
+        {activeRoute === 'dev-subsystem-isolation' && (
+          <Layer3DevSubsystemIsolationRecipe
+            isLight={isLight}
+            onBack={goBack}
           />
         )}
 

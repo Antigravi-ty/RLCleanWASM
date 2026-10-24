@@ -10,6 +10,7 @@ import {
 } from '../../replay/ReplayTimelineController.js';
 import { StandaloneReplayViewerController } from '../../replay/StandaloneReplayViewerController.js';
 import { FreeplayRewinderController } from '../../replay/FreeplayRewinderController.js';
+import { NameTagTunerArenaController } from './NameTagTunerArenaController.js';
 import { hudStore } from '../../stores/hudStore';
 
 const POST_GOAL_CELEBRATION_TICKS = 150; // 1.25s @ 120Hz before Goal Replay
@@ -39,6 +40,8 @@ export class FreeplayMode extends BaseGameMode {
     this.standaloneReplayViewer.attach();
     this.rewinderController = new FreeplayRewinderController(runtime, this);
     this.rewinderController.attach();
+    this.nameTagTunerController = new NameTagTunerArenaController(runtime);
+    this.nameTagTunerController.attach();
 
     this.isReplayActive = false;
     this.replayCameraMode = 'director'; // 'director' | 'pov'
@@ -73,6 +76,8 @@ export class FreeplayMode extends BaseGameMode {
     this.rewinderController.runtime = r;
     this.rewinderController.mode = this;
     this.rewinderController.attach();
+    this.nameTagTunerController.runtime = r;
+    this.nameTagTunerController.attach();
     this.isReplayActive = false;
     this.goalResetTicks = 0;
     this.replayRingBuffer?.clear?.();
@@ -97,6 +102,7 @@ export class FreeplayMode extends BaseGameMode {
     }
     this.standaloneReplayViewer.detach();
     this.rewinderController.detach();
+    this.nameTagTunerController.detach();
     this.replayController?.endReplaySession?.();
     this.replayRingBuffer?.clear?.();
     this.isReplayActive = false;
@@ -136,6 +142,7 @@ export class FreeplayMode extends BaseGameMode {
   }
 
   onBeforePhysicsTick() {
+    this.nameTagTunerController?.onBeforePhysicsTick?.();
     if (this.rewinderController && !this.rewinderController.onBeforePhysicsTick()) {
       return false;
     }
@@ -204,6 +211,7 @@ export class FreeplayMode extends BaseGameMode {
         },
       ],
     });
+    this.rewinderController?.onAfterPhysicsTick?.();
 
     // 4. Advance post-goal celebration countdown -> transition to Goal Replay
     if (this.goalResetTicks > 0) {

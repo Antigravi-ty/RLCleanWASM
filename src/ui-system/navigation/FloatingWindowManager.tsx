@@ -23,6 +23,7 @@ import { ReplayDirectorTunerFloatingWindow } from '../panels/ReplayDirectorTuner
 import { ReplayViewerFloatingWindow } from '../panels/ReplayViewerFloatingWindow';
 import { GoalBarrierFloatingWindow } from '../panels/GoalBarrierFloatingWindow';
 import { RewinderConfiguratorFloatingWindow } from '../panels/RewinderConfiguratorFloatingWindow';
+import { NameTagTunerFloatingWindow } from '../panels/NameTagTunerFloatingWindow';
 import { getFloatingWindowIcon } from './FloatingWindowIcon';
 
 export interface FloatingWindowManagerProps {
@@ -392,6 +393,8 @@ const FloatingWindowInstance: React.FC<FloatingWindowInstanceProps> = ({
       >
         {item.id === 'opacity-manager' ? (
           <OpacityManagerFloatingWindow isLight={isLight} />
+        ) : item.id === 'name-tag-tuner' ? (
+          <NameTagTunerFloatingWindow isLight={isLight} active={!isContentHidden} />
         ) : item.id === 'replay-viewer-window' ? (
           <ReplayViewerFloatingWindow isLight={isLight} active={!isContentHidden} />
         ) : item.id === 'goal-barrier-config' ? (

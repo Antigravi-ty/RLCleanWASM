@@ -1,6 +1,8 @@
 /**
  * StaticTrainingReplayHelper.js
  * Goal Replay & Shot Expiration Replay session management for StaticTrainingPackMode.
+ * - Both Goal and Expire give a 3.0s (360 ticks @ 120Hz) post-incident delay ("Goal Replay will start").
+ * - Expire Replay looks back up to 10.0s (1200 ticks), disables all slow-motion, and watches all touches.
  */
 
 import {
@@ -12,9 +14,10 @@ import {
 import { useStaticTrainingPackStore } from '../../../stores/staticTrainingPackStore';
 import { hudStore } from '../../../stores/hudStore';
 
-export const POST_GOAL_CELEBRATION_TICKS = 150; // 1.25s @ 120Hz
+export const POST_GOAL_CELEBRATION_TICKS = 360; // 3.0s @ 120Hz
+export const POST_EXPIRE_CELEBRATION_TICKS = 360; // 3.0s @ 120Hz
 export const POST_GOAL_FREEZE_DELAY_TICKS = 30;
-export const EXPIRE_REPLAY_DURATION_TICKS = 360; // 3.0s @ 120Hz (no slow-mo)
+export const EXPIRE_REPLAY_LOOKBACK_TICKS = 1200; // Up to 10.0s @ 120Hz
 
 export function beginStaticTrainingReplaySession(mode, type = 'goal') {
   const r = mode.runtime;
@@ -33,8 +36,11 @@ export function beginStaticTrainingReplaySession(mode, type = 'goal') {
 
   let extractedFrames = [];
   if (type === 'expire') {
-    // Extract up to 3.0 seconds (360 ticks) of frames leading up to expiration
-    const startTick = Math.max(mode.lastKickoffStartTick, currentTick - EXPIRE_REPLAY_DURATION_TICKS);
+    const expireTick = mode.goalIncidentTick > 0 ? mode.goalIncidentTick : currentTick;
+    const startTick = Math.max(
+      mode.lastKickoffStartTick,
+      expireTick - EXPIRE_REPLAY_LOOKBACK_TICKS
+    );
     extractedFrames = mode.replayRingBuffer.getFramesInTickRange
       ? mode.replayRingBuffer.getFramesInTickRange(startTick, currentTick)
       : mode.replayRingBuffer.extractRange(startTick, currentTick);
@@ -64,6 +70,7 @@ export function beginStaticTrainingReplaySession(mode, type = 'goal') {
     carTeamResolver: () => mode.goalScoringTeam,
     frames: extractedFrames,
     disableSlowMo: type === 'expire',
+    watchAllTouches: type === 'expire',
   });
 
   mode.isReplayActive = true;
@@ -198,7 +205,13 @@ export function completeStaticTrainingReplayAndAdvanceNextShot(mode) {
     replayAssistName: null,
   });
 
-  // Advance to next shot (wrapping from last to first)
+  // If testing a single shot via [G] in Edit Mode, stay on this single shot
+  if (mode.isTestingSingleShot) {
+    mode.reloadCurrentShot();
+    return;
+  }
+
+  // Otherwise advance to next shot (wrapping from last to first)
   useStaticTrainingPackStore.getState().nextShot();
 }
 

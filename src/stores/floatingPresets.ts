@@ -193,8 +193,19 @@ export const REPLAY_VIEWER_PRESET: PresetConfig = {
   singleton: true,
 };
 
+export const NAME_TAG_TUNER_PRESET: PresetConfig = {
+  id: 'name-tag-tuner',
+  title: 'Multiplayer Name Tag Active Tuner',
+  category: 'NameTagTuner',
+  width: 480,
+  height: 620,
+  resizable: true,
+  singleton: true,
+};
+
 export const PRESET_WINDOWS: PresetConfig[] = [
   REPLAY_VIEWER_PRESET,
+  NAME_TAG_TUNER_PRESET,
   GOAL_BARRIER_PRESET,
   REWINDER_CONFIGURATOR_PRESET,
   REPLAY_DIRECTOR_TUNER_PRESET,

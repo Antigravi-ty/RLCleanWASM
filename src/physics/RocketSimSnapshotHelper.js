@@ -264,6 +264,42 @@ export function applyCarStateToEngine(engine, carIndex, carState) {
     if (typeof engine.module?._physics_setCarState === 'function') {
       engine.module._physics_setCarState(carIndex, engine.statePtr + offset * 4);
     }
+    if (
+      'hasFlipOrJump' in carState &&
+      !carState.hasFlipOrJump &&
+      target[19] < 0.5 &&
+      typeof engine.module?._physics_saveState === 'function' &&
+      typeof engine.module?._physics_restoreState === 'function'
+    ) {
+      const fullSnapSize =
+        typeof engine.getStateSnapshotSize === 'function'
+          ? engine.getStateSnapshotSize()
+          : 4201;
+      ensureWasmSnapshotBuffer(engine, fullSnapSize);
+      engine.module._physics_saveState(engine.wasmStatePtr);
+      const wOffset = engine.wasmStatePtr >> 2;
+      const u32 = engine.module.HEAPU32;
+      const f32 = engine.module.HEAPF32;
+      const isDemoed = target[21] >= 0.5 ? 1 : 0;
+      const word34 = 0x00000000;
+      const word35 = (isDemoed & 0xff) | (1 << 8) | (1 << 16);
+      const carSnapBase = wOffset + 169 + carIndex * 504;
+      if (carSnapBase + 45 < wOffset + fullSnapSize) {
+        u32[carSnapBase + 34] = word34;
+        u32[carSnapBase + 35] = word35;
+        f32[carSnapBase + 41] = 0;
+      }
+      if (carIndex === 0 && fullSnapSize >= 4201) {
+        u32[wOffset + 4003] = word34;
+        u32[wOffset + 4004] = word35;
+        u32[wOffset + 4051] = word34;
+        u32[wOffset + 4052] = word35;
+        u32[wOffset + 4139] = word34;
+        u32[wOffset + 4140] = word35;
+      }
+      engine.module._physics_restoreState(engine.wasmStatePtr);
+      target[22] = 0;
+    }
     return true;
   }
   return false;

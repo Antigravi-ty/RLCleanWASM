@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
-import { Play, Pencil, Check, Info } from 'lucide-react';
+import { Info, CornerUpLeft } from 'lucide-react';
 import { PanelContainer, PanelHeader, PanelContent, PanelFooter } from '../layout/Panel';
-import { SegmentedSwitch } from '../primitives/SegmentedSwitch';
 import { KeycapBadge } from '../primitives/KeycapBadge';
 import { DEFAULT_PANEL_SIZING } from '../tokens';
 import {
   useStaticTrainingPackStore,
   getActiveEditItemVariable,
 } from '../../stores/staticTrainingPackStore';
+import { dialogue } from '../primitives/dialogue/dialogueStore';
 import { StaticTrainingPlayView } from './static-training/StaticTrainingPlayView';
 import { StaticTrainingShotListView } from './static-training/StaticTrainingShotListView';
 import { StaticTrainingShotInspectorView } from './static-training/StaticTrainingShotInspectorView';
@@ -21,23 +21,29 @@ export interface Layer5StaticTrainingPackSessionRecipeProps {
 
 /**
  * [Recipe] Layer 5 Static Training Pack Session Panel (Play & Edit with Live Preview [TAB])
+ * - No direct switching between Edit Mode and Play Mode (must return to Pack Browser).
+ * - In Edit Mode:
+ *   - Starts in full horizontal Shot List view (!isEditingItem).
+ *   - Clicking a shot expands the right-side Edit Shot control panel while the left column
+ *     narrows to compact shot numbers (#01, #02, ...) with a fixed bottom-left Deselect button.
+ *   - Clicking Back prompts a Save / Ignore / Cancel confirmation dialogue backed by the
+ *     dedicated Edit-Mode IndexedDB.
  */
 export const Layer5StaticTrainingPackSessionRecipe: React.FC<
   Layer5StaticTrainingPackSessionRecipeProps
 > = ({ isLight = false, transparent = false, onBack, onCollapsePreview }) => {
   const activePack = useStaticTrainingPackStore((s) => s.activePack);
   const sessionMode = useStaticTrainingPackStore((s) => s.sessionMode);
-  const setSessionMode = useStaticTrainingPackStore((s) => s.setSessionMode);
   const currentShotIndex = useStaticTrainingPackStore((s) => s.currentShotIndex);
-  const setCurrentShotIndex = useStaticTrainingPackStore((s) => s.setCurrentShotIndex);
 
   const isEditingItem = useStaticTrainingPackStore((s) => s.isEditingItem);
   const editVarVersion = useStaticTrainingPackStore((s) => s.editVarVersion);
   const enterItemEditMode = useStaticTrainingPackStore((s) => s.enterItemEditMode);
-  const exitItemEditModeAndSave = useStaticTrainingPackStore((s) => s.exitItemEditModeAndSave);
+  const deselectEditShot = useStaticTrainingPackStore((s) => s.deselectEditShot);
+  const commitEditSessionToMainDb = useStaticTrainingPackStore((s) => s.commitEditSessionToMainDb);
+  const discardEditSessionChanges = useStaticTrainingPackStore((s) => s.discardEditSessionChanges);
 
   const [hoveredDesc, setHoveredDesc] = useState<string | null>(null);
-  const [editTab, setEditTab] = useState<'list' | 'inspector'>('inspector');
 
   // Subscribe to editVarVersion so fast in-memory variable mutations re-render sliders smoothly
   void editVarVersion;
@@ -49,11 +55,43 @@ export const Layer5StaticTrainingPackSessionRecipe: React.FC<
     items[safeIndex] ||
     null;
 
-  const handleBackClick = async () => {
-    if (isEditingItem) {
-      await exitItemEditModeAndSave();
+  const handleBackClick = () => {
+    if (sessionMode !== 'edit') {
+      onBack?.();
+      return;
     }
-    onBack?.();
+
+    dialogue.show({
+      id: 'static-training-exit-edit-confirm',
+      title: 'EXIT EDIT MODE',
+      tone: 'warning',
+      icon: 'triangle-alert',
+      maxWidth: 500,
+      content:
+        'Do you want to save your previous edits before exiting Edit Mode?',
+      buttons: [
+        {
+          label: 'Save',
+          variant: 'primary',
+          onClick: async () => {
+            await commitEditSessionToMainDb();
+            onBack?.();
+          },
+        },
+        {
+          label: 'Ignore',
+          variant: 'danger',
+          onClick: async () => {
+            await discardEditSessionChanges();
+            onBack?.();
+          },
+        },
+        {
+          label: 'Cancel',
+          variant: 'outline',
+        },
+      ],
+    });
   };
 
   return (
@@ -73,37 +111,6 @@ export const Layer5StaticTrainingPackSessionRecipe: React.FC<
         isLight={isLight}
         rightElement={
           <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={async () => {
-                if (sessionMode === 'edit') {
-                  await exitItemEditModeAndSave();
-                  setSessionMode('play');
-                } else {
-                  setSessionMode('edit');
-                  enterItemEditMode(safeIndex);
-                }
-              }}
-              className={`flex items-center gap-1 px-2 py-1 rounded-lg border text-[11px] font-bold cursor-pointer transition-all ${
-                isLight
-                  ? 'bg-neutral-100 hover:bg-neutral-200 border-neutral-300 text-neutral-800'
-                  : 'bg-neutral-800 hover:bg-neutral-700 border-neutral-700 text-neutral-200'
-              }`}
-              title={sessionMode === 'edit' ? 'Switch to Play Mode' : 'Switch to Edit Mode'}
-            >
-              {sessionMode === 'edit' ? (
-                <>
-                  <Play className="h-3 w-3" />
-                  <span>Play Mode</span>
-                </>
-              ) : (
-                <>
-                  <Pencil className="h-3 w-3" />
-                  <span>Edit Mode</span>
-                </>
-              )}
-            </button>
-
             <button
               type="button"
               onClick={onCollapsePreview}
@@ -133,7 +140,10 @@ export const Layer5StaticTrainingPackSessionRecipe: React.FC<
         }
       />
 
-      <PanelContent scrollable={true} className="p-4 flex flex-col gap-3">
+      <PanelContent
+        scrollable={sessionMode === 'play'}
+        className="p-4 flex flex-col gap-3 h-full min-h-0 overflow-hidden"
+      >
         {sessionMode === 'play' && (
           <StaticTrainingPlayView
             isLight={isLight}
@@ -143,69 +153,112 @@ export const Layer5StaticTrainingPackSessionRecipe: React.FC<
           />
         )}
 
-        {sessionMode === 'edit' && currentShot && (
+        {sessionMode === 'edit' && (
           <>
-            {/* Top Mode Switcher: Shot List vs Item Inspector */}
-            <div className="flex items-center justify-between gap-2">
-              <div className="grow">
-                <SegmentedSwitch
-                  options={[
-                    {
-                      value: 'inspector',
-                      label: `Edit Shot #${safeIndex + 1}: ${currentShot.name}`,
-                    },
-                    {
-                      value: 'list',
-                      label: `Shot List & Reorder (${items.length})`,
-                    },
-                  ]}
-                  value={editTab}
-                  onChange={(v) => setEditTab(v as 'list' | 'inspector')}
-                  isLight={isLight}
-                  size="sm"
-                />
-              </div>
-
-              <button
-                type="button"
-                onClick={async () => {
-                  await exitItemEditModeAndSave();
-                  enterItemEditMode(safeIndex);
-                  setHoveredDesc(
-                    `Saved Shot #${safeIndex + 1} to IndexedDB (/static-training-pack/${activePack?.metadata.uuid}/items/${safeIndex}).`
-                  );
-                }}
-                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-[11px] font-bold shrink-0 cursor-pointer ${
-                  isLight
-                    ? 'bg-neutral-900 hover:bg-neutral-800 border-neutral-900 text-white'
-                    : 'bg-white hover:bg-neutral-200 border-white text-neutral-900'
-                }`}
-                title="Commit current in-memory shot variable to IndexedDB"
-              >
-                <Check className="h-3.5 w-3.5" />
-                <span>Save Item</span>
-              </button>
-            </div>
-
-            {editTab === 'list' ? (
+            {!isEditingItem || !currentShot ? (
+              /* State 1: Full-width horizontal Shot List when no shot is selected */
               <StaticTrainingShotListView
                 isLight={isLight}
                 items={items}
                 safeIndex={safeIndex}
-                onSelectInspectShot={async (idx) => {
-                  if (isEditingItem) await exitItemEditModeAndSave();
-                  setCurrentShotIndex(idx);
+                onSelectInspectShot={(idx) => {
                   enterItemEditMode(idx);
-                  setEditTab('inspector');
                 }}
                 onHoverDesc={setHoveredDesc}
               />
             ) : (
-              <StaticTrainingShotInspectorView
-                isLight={isLight}
-                currentShot={currentShot}
-                onHoverDesc={setHoveredDesc}
-              />
+              /* State 2: Split View — Compact Shot Number List + Fixed Deselect on Left, Edit Shot Panel on Right */
+              <div className="grid grid-cols-12 gap-3.5 h-full min-h-0 overflow-hidden">
+                {/* LEFT COLUMN: Compact Shot Numbers + Fixed Bottom Deselect (3 cols) */}
+                <div
+                  className={`col-span-3 flex flex-col justify-between rounded-xl border overflow-hidden min-h-0 ${
+                    isLight
+                      ? 'bg-neutral-50/80 border-neutral-200'
+                      : 'bg-neutral-900/60 border-neutral-800'
+                  }`}
+                >
+                  <div
+                    className={`px-2.5 py-2 border-b text-[10px] font-mono font-bold uppercase tracking-wider text-center shrink-0 ${
+                      isLight
+                        ? 'border-neutral-200 text-neutral-500 bg-neutral-100/70'
+                        : 'border-neutral-800 text-neutral-400 bg-neutral-900/90'
+                    }`}
+                  >
+                    SHOTS ({items.length})
+                  </div>
+
+                  <div className="flex flex-col gap-1 p-1.5 overflow-y-auto grow min-h-0">
+                    {items.map((shot, idx) => {
+                      const active = idx === safeIndex;
+                      const numStr = `#${String(idx + 1).padStart(2, '0')}`;
+                      return (
+                        <button
+                          key={shot.id || idx}
+                          type="button"
+                          onClick={() => enterItemEditMode(idx)}
+                          onMouseEnter={() =>
+                            setHoveredDesc(`Select ${numStr} (${shot.name})`)
+                          }
+                          onMouseLeave={() => setHoveredDesc(null)}
+                          className={`w-full py-2 px-2 rounded-lg border font-mono text-xs font-extrabold text-center transition-all cursor-pointer ${
+                            active
+                              ? isLight
+                                ? 'bg-neutral-900 border-neutral-900 text-white shadow-xs'
+                                : 'bg-white border-white text-neutral-900 shadow-xs'
+                              : isLight
+                              ? 'bg-white/80 hover:bg-white border-neutral-200 text-neutral-700'
+                              : 'bg-neutral-850/70 hover:bg-neutral-800 border-neutral-800 text-neutral-300'
+                          }`}
+                        >
+                          {numStr}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Fixed Bottom-Left Deselect Button */}
+                  <div
+                    className={`p-1.5 border-t shrink-0 ${
+                      isLight
+                        ? 'border-neutral-200 bg-neutral-100/70'
+                        : 'border-neutral-800 bg-neutral-900/90'
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => void deselectEditShot()}
+                      onMouseEnter={() =>
+                        setHoveredDesc(
+                          'Deselect shot and return to full Shot List to reorder, duplicate, export JSON, or import JSON.'
+                        )
+                      }
+                      onMouseLeave={() => setHoveredDesc(null)}
+                      className={`w-full flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg border text-xs font-bold transition-all cursor-pointer active:scale-95 ${
+                        isLight
+                          ? 'bg-white hover:bg-neutral-200 border-neutral-300 text-neutral-800'
+                          : 'bg-neutral-800 hover:bg-neutral-700 border-neutral-700 text-neutral-100'
+                      }`}
+                    >
+                      <CornerUpLeft className="h-3.5 w-3.5" />
+                      <span>Deselect</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* RIGHT COLUMN: Edit Shot Control Panel (9 cols) */}
+                <div className="col-span-9 flex flex-col min-h-0 overflow-y-auto pr-1">
+                  <div className="flex items-center justify-between pb-2 shrink-0">
+                    <span className="text-xs font-extrabold uppercase tracking-wider opacity-80">
+                      EDIT SHOT #{String(safeIndex + 1).padStart(2, '0')}
+                    </span>
+                  </div>
+                  <StaticTrainingShotInspectorView
+                    isLight={isLight}
+                    currentShot={currentShot}
+                    onHoverDesc={setHoveredDesc}
+                  />
+                </div>
+              </div>
             )}
           </>
         )}
@@ -227,7 +280,7 @@ export const Layer5StaticTrainingPackSessionRecipe: React.FC<
           >
             {hoveredDesc ||
               (sessionMode === 'edit'
-                ? 'Press TAB for Live Preview. Use [9] / [0] or Right-Click to cycle 3D Edit Sub-Modes.'
+                ? 'Press TAB for Live Preview. 9/0 Cycle Selection · V to Move Down · O/P Boost · [/] Speed.'
                 : 'Press TAB for Live Preview. Hotkeys: [R] Reset Shot, [[] Prev Shot, []] Next Shot.')}
           </span>
         </div>

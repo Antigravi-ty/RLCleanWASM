@@ -15,6 +15,7 @@ import {
   useExpMultiBotsStore,
   getExpColorSwatch,
 } from '../../../stores/expMultiBotsStore';
+import { setNameTagRuntimeState } from '../../../config/nameTagConfig.ts';
 import { hudStore } from '../../../stores/hudStore';
 import { gameAudio } from '../../../audio/GameAudioEngineFacade.js';
 import { clearRetainedMatchReplayOnMatchStart } from '../../../replay/ReplayFileExporter.js';
@@ -51,6 +52,15 @@ export function publishExpSpawnedCarsTelemetry(mode) {
     })),
     nextoLoaded: isExperimentalEngineReady('nexto'),
     nectoLoaded: isExperimentalEngineReady('necto'),
+  });
+
+  setNameTagRuntimeState({
+    isMultiplayerOrMultiCarMode: true,
+    carEntries: mode.spawnedCars.map((c) => ({
+      carIndex: c.carIndex,
+      name: getExpCarDisplayName(c, mode.spawnedCars),
+      team: c.team === 1 ? 1 : 0,
+    })),
   });
 }
 

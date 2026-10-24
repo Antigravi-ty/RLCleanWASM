@@ -178,12 +178,78 @@ export class StaticTrainingPackMode extends BaseGameMode {
 
   _bindStoreRuntimeHandlers() {
     useStaticTrainingPackStore.getState().setRuntimeHandlers({
-      onShotChanged: () => this.reloadCurrentShot(),
-      onSessionModeChanged: () => this.reloadCurrentShot(),
-      onEditSubModeChanged: (subMode) => applyEditSubModeCamera(this, subMode),
-      onEditVariableMutated: (item) => applyStagedShotToArena(this, item, true),
+      onShotChanged: () => {
+        this.isFreeCamTrajectoryTesting = false;
+        this.isTestingSingleShot = false;
+        const s = useStaticTrainingPackStore.getState();
+        s.setFreeCamTrajectoryTesting(false);
+        s.setTestingSingleShot(false);
+        this.reloadCurrentShot();
+      },
+      onSessionModeChanged: () => {
+        this.isFreeCamTrajectoryTesting = false;
+        this.isTestingSingleShot = false;
+        const s = useStaticTrainingPackStore.getState();
+        s.setFreeCamTrajectoryTesting(false);
+        s.setTestingSingleShot(false);
+        this.reloadCurrentShot();
+      },
+      onEditSubModeChanged: (subMode) => {
+        if (this.isFreeCamTrajectoryTesting) {
+          this.stopFreeCamTrajectoryTest();
+        }
+        applyEditSubModeCamera(this, subMode);
+      },
+      onEditVariableMutated: (item) => {
+        if (this.isFreeCamTrajectoryTesting) {
+          this.isFreeCamTrajectoryTesting = false;
+          useStaticTrainingPackStore.getState().setFreeCamTrajectoryTesting(false);
+        }
+        applyStagedShotToArena(this, item, true);
+      },
       onResetShotRequested: () => this.reloadCurrentShot(),
     });
+  }
+
+  toggleFreeCamTrajectoryTest() {
+    if (this.isFreeCamTrajectoryTesting) {
+      this.stopFreeCamTrajectoryTest();
+      return;
+    }
+    if (this.isTestingSingleShot) {
+      this.isTestingSingleShot = false;
+      useStaticTrainingPackStore.getState().setTestingSingleShot(false);
+    }
+    this.isFreeCamTrajectoryTesting = true;
+    useStaticTrainingPackStore.getState().setFreeCamTrajectoryTesting(true);
+    launchFreeCamTrajectoryPreview(this);
+  }
+
+  stopFreeCamTrajectoryTest() {
+    if (!this.isFreeCamTrajectoryTesting) return;
+    this.isFreeCamTrajectoryTesting = false;
+    useStaticTrainingPackStore.getState().setFreeCamTrajectoryTesting(false);
+    const shot = this._getCurrentShotConfig();
+    if (shot) {
+      applyStagedShotToArena(this, shot, true);
+    }
+  }
+
+  toggleSingleShotTest() {
+    const store = useStaticTrainingPackStore.getState();
+    if (this.isTestingSingleShot) {
+      this.isTestingSingleShot = false;
+      store.setTestingSingleShot(false);
+      this.reloadCurrentShot();
+    } else {
+      if (this.isFreeCamTrajectoryTesting) {
+        this.isFreeCamTrajectoryTesting = false;
+        store.setFreeCamTrajectoryTesting(false);
+      }
+      this.isTestingSingleShot = true;
+      store.setTestingSingleShot(true);
+      this.reloadCurrentShot();
+    }
   }
 
   _getCurrentShotConfig() {
@@ -208,7 +274,9 @@ export class StaticTrainingPackMode extends BaseGameMode {
       this.replayController?.endReplaySession?.();
       this.isReplayActive = false;
     }
+    this.isFreeCamTrajectoryTesting = false;
     this.goalResetTicks = 0;
+    this.replayPendingType = 'goal';
     this.isOvertimeWaitingGround = false;
     this.lastTimeoutBeepSec = -1;
     this.hasBallMoved = false;
@@ -217,16 +285,19 @@ export class StaticTrainingPackMode extends BaseGameMode {
     r.goalReplayCameraOverrideActive = false;
 
     const store = useStaticTrainingPackStore.getState();
+    store.setFreeCamTrajectoryTesting(false);
     const shot = this._getCurrentShotConfig();
     if (!shot) return;
 
     this.stagedShot = shot;
     applyStagedShotToArena(this, shot, false);
 
-    const timeoutSec = Math.max(1, Math.min(120, Number(shot.timeoutSeconds) || 10));
+    const timeoutSec = Math.max(1, Math.min(60, Number(shot.timeoutSeconds) || 10));
     this.remainingTimeoutTicks = Math.round(timeoutSec * 120);
 
-    if (store.sessionMode === 'edit') {
+    const isPlayableSession = store.sessionMode === 'play' || this.isTestingSingleShot;
+
+    if (!isPlayableSession) {
       this.playPhase = 'waiting-input';
       this.countdownTicksRemaining = 0;
       applyEditSubModeCamera(this, store.editSubMode);
@@ -322,12 +393,41 @@ export class StaticTrainingPackMode extends BaseGameMode {
 
     const store = useStaticTrainingPackStore.getState();
 
-    // Edit Mode: physics does not advance freely
-    if (store.sessionMode === 'edit') {
+    // Edit Mode: only step physics during Free-Cam [T] trajectory test or [G] single-shot test
+    if (store.sessionMode === 'edit' && !this.isTestingSingleShot) {
+      if (this.isFreeCamTrajectoryTesting) {
+        sim.setControls?.(0, {
+          throttle: 0,
+          steer: 0,
+          pitch: 0,
+          yaw: 0,
+          roll: 0,
+          jump: false,
+          boost: false,
+          handbrake: false,
+        });
+        if (this.kickoffBallFrozen && this.stagedShot) {
+          const bLoc = this.stagedShot.ball.location || this.stagedShot.ball.pos || [0, 0, BALL_GROUND_MIN_Z];
+          const cv = sim.getCarStateView?.(0);
+          if (cv) {
+            const dist = Math.hypot(cv.posX - bLoc[0], cv.posY - bLoc[1], cv.posZ - bLoc[2]);
+            if (dist <= 182.0) {
+              this.kickoffBallFrozen = false;
+            } else {
+              sim.setBallState({
+                pos: [bLoc[0], bLoc[1], Math.max(BALL_GROUND_MIN_Z, bLoc[2])],
+                vel: [0, 0, 0],
+                angVel: [0, 0, 0],
+              });
+            }
+          }
+        }
+        return true;
+      }
       return false;
     }
 
-    // Play Mode: Down Counter pre-roll
+    // Play Mode (or [G] single-shot test): Down Counter pre-roll
     if (this.playPhase === 'countdown') {
       this.countdownTicksRemaining = Math.max(0, this.countdownTicksRemaining - 1);
       const downSec = store.downCounterValue || 1;
@@ -394,7 +494,11 @@ export class StaticTrainingPackMode extends BaseGameMode {
     if (!sim || this.isReplayActive) return;
 
     const store = useStaticTrainingPackStore.getState();
-    if (store.sessionMode !== 'play') return;
+    if (store.sessionMode === 'edit' && this.isFreeCamTrajectoryTesting) {
+      // During Free-Cam [T] trajectory preview, no timer or goal/expire triggers run
+      return;
+    }
+    if (store.sessionMode !== 'play' && !this.isTestingSingleShot) return;
     if (this.playPhase !== 'live' && this.playPhase !== 'goal') return;
 
     const currentTick = Math.floor(sim.getHeaderView?.()?.tickCount ?? 0);
@@ -445,9 +549,10 @@ export class StaticTrainingPackMode extends BaseGameMode {
       }
     }
 
-    // Freeze ball in net after goal delay
+    // Freeze ball in net after goal delay (only for actual goals, not shot expiration)
     if (
       this.goalResetTicks > 0 &&
+      this.replayPendingType === 'goal' &&
       this.goalIncidentTick >= 0 &&
       currentTick >= this.goalIncidentTick + POST_GOAL_FREEZE_DELAY_TICKS
     ) {
@@ -461,14 +566,14 @@ export class StaticTrainingPackMode extends BaseGameMode {
       }
     }
 
-    // Record compact snapshot into ring buffer
+    // Record compact snapshot into ring buffer continuously
     this.replayRingBuffer.recordFrame(currentTick, sim.state);
 
-    // Advance post-goal celebration countdown -> Goal Replay
+    // Advance post-goal or post-expire 3-second countdown -> Replay
     if (this.goalResetTicks > 0) {
       this.goalResetTicks--;
       if (this.goalResetTicks <= 0) {
-        beginStaticTrainingReplaySession(this, 'goal');
+        beginStaticTrainingReplaySession(this, this.replayPendingType || 'goal');
       }
       return;
     }
@@ -497,6 +602,7 @@ export class StaticTrainingPackMode extends BaseGameMode {
       this.goalBallSpeedKph = ballSpeedKph;
       this.frozenGoalBallState = null;
       this.playPhase = 'goal';
+      this.replayPendingType = 'goal';
 
       this.replayRingBuffer.appendIncident(currentTick, {
         type: INCIDENT_EVENT_TYPES.GOAL_SCORED,
@@ -569,6 +675,9 @@ export class StaticTrainingPackMode extends BaseGameMode {
         this.goalScorerCarIndex = 0;
         this.goalScorerName = 'SHOT EXPIRED';
         this.goalBallSpeedKph = Math.round(ballSpeed * 0.036);
+        this.frozenGoalBallState = null;
+        this.playPhase = 'goal';
+        this.replayPendingType = 'expire';
 
         this.replayRingBuffer.appendAudioEvent(currentTick, {
           cueId: 'training_ball_expire',
@@ -577,7 +686,18 @@ export class StaticTrainingPackMode extends BaseGameMode {
         });
         audio?.play?.('training_ball_expire', 1.0, 250);
 
-        beginStaticTrainingReplaySession(this, 'expire');
+        this.goalResetTicks = POST_EXPIRE_CELEBRATION_TICKS;
+        if (r?.match?.state) {
+          r.match.state.phase = 'goal';
+        }
+
+        hudStore.getState().setMatchState({
+          matchPhase: 'goal',
+          replayScorerName: this.goalScorerName,
+          replayScorerTeam: this.goalScoringTeam,
+          replayBallSpeedKph: this.goalBallSpeedKph,
+          replayAssistName: null,
+        });
       } else if (!this.isOvertimeWaitingGround) {
         this.isOvertimeWaitingGround = true;
         store.updateLiveTelemetry({ isOvertimeWaitGround: true });
@@ -601,10 +721,12 @@ export class StaticTrainingPackMode extends BaseGameMode {
       return;
     }
 
-    // 2. Edit Mode continuous movement + visual spin
-    if (store.sessionMode === 'edit') {
+    // 2. Edit Mode continuous movement + visual spin (unless in [G] single-shot playable test)
+    if (store.sessionMode === 'edit' && !this.isTestingSingleShot) {
       updateEditorCameraAndContinuousInputs(this, dt);
-      spinBallMeshInPlace(this, dt);
+      if (!this.isFreeCamTrajectoryTesting) {
+        spinBallMeshInPlace(this, dt);
+      }
       const shot = this._getCurrentShotConfig();
       if (this.visuals && shot) {
         this.visuals.update(shot, store.editSubMode, false);
@@ -612,7 +734,7 @@ export class StaticTrainingPackMode extends BaseGameMode {
       return;
     }
 
-    // 3. Play Mode pre-launch & live visual updates
+    // 3. Play Mode (or [G] single-shot test) pre-launch & live visual updates
     const isPreLaunch = this.playPhase === 'countdown' || this.playPhase === 'waiting-input';
     if (isPreLaunch) {
       spinBallMeshInPlace(this, dt);

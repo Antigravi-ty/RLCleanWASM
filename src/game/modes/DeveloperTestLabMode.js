@@ -377,17 +377,26 @@ export class DeveloperTestLabMode extends BaseGameMode {
         triggerGoalReplayBenchScenario(this, scenario);
       },
       onGoalReplayTogglePause: () => {
-        if (!this.goalReplayTimelineController) return;
+        if (!this.goalReplayTimelineController) {
+          console.warn('[DeveloperTestLabMode] Cannot toggle goal replay pause: goalReplayTimelineController is not initialized.');
+          return;
+        }
         const paused = this.goalReplayTimelineController.togglePause();
         useDevTestLabStore.getState().updateLiveTelemetry({ goalReplayPaused: paused });
       },
       onGoalReplayCycleSpeed: () => {
-        if (!this.goalReplayTimelineController) return;
+        if (!this.goalReplayTimelineController) {
+          console.warn('[DeveloperTestLabMode] Cannot cycle goal replay speed: goalReplayTimelineController is not initialized.');
+          return;
+        }
         const speed = this.goalReplayTimelineController.cyclePlaybackSpeed();
         useDevTestLabStore.getState().updateLiveTelemetry({ goalReplaySpeed: speed });
       },
       onGoalReplaySeekNormalized: (progress01) => {
-        if (!this.goalReplayTimelineController) return;
+        if (!this.goalReplayTimelineController) {
+          console.warn('[DeveloperTestLabMode] Cannot seek goal replay: goalReplayTimelineController is not initialized.');
+          return;
+        }
         this.goalReplayTimelineController.seekToNormalized(progress01, r.interpolator);
         useDevTestLabStore.getState().updateLiveTelemetry({
           goalReplayPlaybackCursor: this.goalReplayTimelineController.currentFrameIndex,
@@ -434,6 +443,7 @@ export class DeveloperTestLabMode extends BaseGameMode {
       podiumActive: false,
       goalReplayPhase: 'live',
     });
+    this.runtime?.modeManager?.modes?.get?.('freeplay')?.rewinderController?.attach?.();
   }
 
   _handleTabSwitch(tab) {

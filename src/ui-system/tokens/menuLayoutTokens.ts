@@ -19,6 +19,7 @@ export type MenuPanelId =
   | 'layer4-advanced-audio'
   | 'layer4-event-and-triggerer'
   | 'layer3-exp-multi-bots'
+  | 'layer3-dev-subsystem-isolation'
   | 'layer3-dev-sandboxes'
   | 'layer3-dev-active-tuners'
   | 'layer3-dev-calibrated-presets'
@@ -125,7 +126,7 @@ export const DEFAULT_PANEL_SIZING: Record<MenuPanelId, PanelSizingConfig> = {
   'layer3-self-training': {
     mode: 'auto',
     width: 500,
-    targetHeight: 460,
+    targetHeight: 470,
     minHeight: 260,
     maxHeight: 560,
   },
@@ -185,6 +186,13 @@ export const DEFAULT_PANEL_SIZING: Record<MenuPanelId, PanelSizingConfig> = {
     minHeight: 360,
     maxHeight: 660,
   },
+  'layer3-dev-subsystem-isolation': {
+    mode: 'fixed',
+    width: 600,
+    targetHeight: 580,
+    minHeight: 360,
+    maxHeight: 660,
+  },
   'layer3-dev-sandboxes': {
     mode: 'auto',
     width: 560,
@@ -222,8 +230,8 @@ export const DEFAULT_PANEL_SIZING: Record<MenuPanelId, PanelSizingConfig> = {
   },
   'layer5-static-training-pack-session': {
     mode: 'fixed',
-    width: 560,
-    targetHeight: 560,
+    width: 740,
+    targetHeight: 580,
     minHeight: 360,
     maxHeight: 660,
   },

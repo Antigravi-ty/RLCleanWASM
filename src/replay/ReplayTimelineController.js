@@ -306,7 +306,10 @@ export class ReplayTimelineController {
     let resolvedScorerCarIndex = fallbackScorer;
     for (let i = touchEvents.length - 1; i >= 0; i--) {
       const t = touchEvents[i];
-      if (t.frameIndex <= goalLineFrameIdx + 12 && t.team === scoringTeam) {
+      if (
+        t.frameIndex <= goalLineFrameIdx + 12 &&
+        (this.watchAllTouches || t.team === scoringTeam)
+      ) {
         lastScoringTouchFrameIdx = t.frameIndex;
         resolvedScorerCarIndex = t.carIndex;
         break;
@@ -330,6 +333,7 @@ export class ReplayTimelineController {
   /**
    * Resolves a Two-Touch Lookahead plan at `frameIdx`:
    * Identifies both the primary upcoming scoring-team touch (T1) and the subsequent touch (T2).
+   * When `this.watchAllTouches` is true (e.g. shot expiration replay), observes all touches regardless of team.
    */
   resolveTouchLookaheadForFrame(frameIdx, fallbackScorerCarIndex = 0) {
     const state = this.directorCameraState;
@@ -347,7 +351,9 @@ export class ReplayTimelineController {
     const holdTicks = Math.round((REPLAY_DIRECTOR_CONFIG.touchHoldAfterSeconds ?? 0.2) * REPLAY_TICK_RATE);
     const lookaheadTicks = Math.round((REPLAY_DIRECTOR_CONFIG.twoTouchLookaheadSeconds ?? 2.2) * REPLAY_TICK_RATE);
 
-    const scoringTouches = touches.filter((t) => t.team === scoringTeam);
+    const scoringTouches = this.watchAllTouches
+      ? touches
+      : touches.filter((t) => t.team === scoringTeam);
     const candidateTouches = scoringTouches.length > 0 ? scoringTouches : touches;
 
     let primaryIdx = -1;
@@ -461,6 +467,7 @@ export class ReplayTimelineController {
     this.carTeamResolver =
       typeof options.carTeamResolver === 'function' ? options.carTeamResolver : null;
     this.disableSlowMo = Boolean(options.disableSlowMo);
+    this.watchAllTouches = Boolean(options.watchAllTouches);
     this.activeFrames =
       Array.isArray(options.frames) && options.frames.length > 0
         ? options.frames

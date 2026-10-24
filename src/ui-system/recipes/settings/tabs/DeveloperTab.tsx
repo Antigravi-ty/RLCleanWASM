@@ -11,7 +11,6 @@ import {
 } from 'lucide-react';
 import { VStack } from '../../../layout/VStack';
 import { SegmentedSwitch } from '../../../primitives/SegmentedSwitch';
-import { floatingStore } from '../../../../stores/floatingStore';
 import { useAppStore } from '../../../../stores/appStore';
 import {
   getBallVisualConfig,
@@ -126,16 +125,13 @@ export const DeveloperTab: React.FC<DeveloperTabProps> = ({
         <div className="flex items-center gap-1.5 shrink-0">
           <button
             type="button"
-            onClick={() => {
-              floatingStore.setOpacity(70);
-              useAppStore.getState().bridge.onStartDevTestLab?.();
-            }}
+            onClick={() => nav('dev-subsystem-isolation')}
             className={`py-1.5 px-2.5 rounded-lg text-xs font-bold border transition-all cursor-pointer flex items-center gap-1 active:scale-95 ${
               isLight
                 ? 'bg-amber-500 hover:bg-amber-600 border-amber-600 text-white'
                 : 'bg-amber-400 hover:bg-amber-300 border-amber-300 text-neutral-950'
             }`}
-            title="Directly enter Subsystem Isolation & MVP Lab"
+            title="Select which of the 6 isolated subsystems to test"
           >
             <Play className="h-3 w-3 fill-current" />
             <span>Enter Lab</span>

@@ -12,7 +12,7 @@ import { createStadiumDomeSky, updateSkyboxConfig } from './arena/ArenaSky.js';
 import { ArenaLightingManager, updateShadowRuntimeConfig } from './arena/ArenaLighting.js';
 import { updateBoostVisuals } from './arena/ArenaVehicleAnimator.js';
 import { ArenaVehicleRegistry } from './arena/ArenaVehicleRegistry.js';
-import { loadBallAssetInto, loadCarAndPadAssets, preloadRemainingVehicleAssets, loadArenaStadiumMeshes } from './arena/ArenaAssetLoader.js';
+import { loadBallAssetInto, loadCarAndPadAssets, loadArenaStadiumMeshes } from './arena/ArenaAssetLoader.js';
 import { updateBallVisualConfig } from './BallVisual.js';
 import { updateArenaFrame } from './arena/ArenaWorldUpdater.js';
 import { StadiumEnvironmentManager } from './stadium/StadiumEnvironmentManager.js';
@@ -135,7 +135,7 @@ export class ArenaWorld {
   }
 
   async loadCarAndPadAssets() {
-    this.padTemplates = await loadCarAndPadAssets(this.vehicleRegistry, this.boostPadSystem, this.vehiclePreset);
+    this.padTemplates = await loadCarAndPadAssets(this.vehicleRegistry, this.boostPadSystem);
     this.markRenderTreeChanged();
   }
 
@@ -310,6 +310,7 @@ export class ArenaWorld {
     this.ballSpeedTrail?.dispose?.();
     this.ballLocatorArrow?.dispose?.();
     this.goalBarrierVisual?.dispose?.();
+    this.nameTagSystem?.dispose?.();
     this.lighting?.dispose?.();
     this.vehicleRegistry?.dispose?.();
     for (const item of [this.sky, this.indicatorRing, this.indicatorHeightRing]) {
