@@ -264,42 +264,6 @@ export function applyCarStateToEngine(engine, carIndex, carState) {
     if (typeof engine.module?._physics_setCarState === 'function') {
       engine.module._physics_setCarState(carIndex, engine.statePtr + offset * 4);
     }
-    if (
-      'hasFlipOrJump' in carState &&
-      !carState.hasFlipOrJump &&
-      target[19] < 0.5 &&
-      typeof engine.module?._physics_saveState === 'function' &&
-      typeof engine.module?._physics_restoreState === 'function'
-    ) {
-      const fullSnapSize =
-        typeof engine.getStateSnapshotSize === 'function'
-          ? engine.getStateSnapshotSize()
-          : 4201;
-      ensureWasmSnapshotBuffer(engine, fullSnapSize);
-      engine.module._physics_saveState(engine.wasmStatePtr);
-      const wOffset = engine.wasmStatePtr >> 2;
-      const u32 = engine.module.HEAPU32;
-      const f32 = engine.module.HEAPF32;
-      const isDemoed = target[21] >= 0.5 ? 1 : 0;
-      const word34 = 0x00000000;
-      const word35 = (isDemoed & 0xff) | (1 << 8) | (1 << 16);
-      const carSnapBase = wOffset + 169 + carIndex * 504;
-      if (carSnapBase + 45 < wOffset + fullSnapSize) {
-        u32[carSnapBase + 34] = word34;
-        u32[carSnapBase + 35] = word35;
-        f32[carSnapBase + 41] = 0;
-      }
-      if (carIndex === 0 && fullSnapSize >= 4201) {
-        u32[wOffset + 4003] = word34;
-        u32[wOffset + 4004] = word35;
-        u32[wOffset + 4051] = word34;
-        u32[wOffset + 4052] = word35;
-        u32[wOffset + 4139] = word34;
-        u32[wOffset + 4140] = word35;
-      }
-      engine.module._physics_restoreState(engine.wasmStatePtr);
-      target[22] = 0;
-    }
     return true;
   }
   return false;
@@ -355,7 +319,7 @@ export function setCarTeamInWasm(engine, carIndex, team) {
   return false;
 }
 
-export function restoreWasmSnapshotState(engine, buffer) {
+export function restoreWasmSnapshotState(engine, buffer, options = {}) {
   if (!buffer) return false;
   const size = buffer.length;
   const fullSnapSize = typeof engine.getStateSnapshotSize === 'function'
@@ -364,12 +328,19 @@ export function restoreWasmSnapshotState(engine, buffer) {
 
   // Compact 448-float GameStateBufferPod fast-path (used by WebRTC, PredictionReconciler & Replay RingBuffer)
   if (size <= engine.stateLen && size < fullSnapSize) {
+    const currentEngineTick = Math.floor(engine.state?.[SIM_OFFSETS.TICK] || 0);
     const copyLen = Math.min(size, engine.state.length);
     engine.state.subarray(0, copyLen).set(
       buffer.subarray ? buffer.subarray(0, copyLen) : buffer.slice(0, copyLen)
     );
+    if (typeof options?.overrideTick === 'number' && Number.isFinite(options.overrideTick)) {
+      engine.state[SIM_OFFSETS.TICK] = Math.max(16, Math.floor(options.overrideTick));
+    } else if (options?.preserveEngineTick) {
+      engine.state[SIM_OFFSETS.TICK] = Math.max(16, currentEngineTick);
+    }
+
     if (typeof engine.module?._physics_restoreCompactState === 'function') {
-      const ok = engine.module._physics_restoreCompactState(0) === 1;
+      const ok = engine.module._physics_restoreCompactState(engine.statePtr, copyLen) === 1;
       if (
         ok &&
         typeof engine.module._physics_saveState === 'function' &&
@@ -380,18 +351,28 @@ export function restoreWasmSnapshotState(engine, buffer) {
         const wOffset = engine.wasmStatePtr >> 2;
         const u32 = engine.module.HEAPU32;
         const f32 = engine.module.HEAPF32;
+        const restoredTick = Math.floor(engine.state[SIM_OFFSETS.TICK] || 0);
+        const numCars = Math.min(
+          MAX_CARS,
+          Math.max(1, Math.round(buffer[SIM_OFFSETS.NUM_CARS] || engine.numCars || 1))
+        );
 
-        for (let c = 0; c < MAX_CARS; c++) {
+        // Clear ArenaSnapshotPod.lastBallWorldHitTick (uint64 at words 5..6) if it exceeds restoredTick
+        if (u32[wOffset + 5] >= restoredTick || u32[wOffset + 6] > 0) {
+          u32[wOffset + 5] = 0;
+          u32[wOffset + 6] = 0;
+        }
+
+        for (let c = 0; c < numCars; c++) {
           const carOff = SIM_OFFSETS.CARS + c * CAR_STATE_STRIDE;
           const extOff = 416 + c * 4;
           if (carOff + 24 >= copyLen) break;
 
-          const onGround = engine.state[carOff + 19] >= 0.5;
-          const isDemoed = engine.state[carOff + 21] >= 0.5 ? 1 : 0;
-          const hasFlipOrJump = engine.state[carOff + 22] >= 0.5;
-          const isFlipping = engine.state[carOff + 24] >= 0.5;
-          const isJumping = extOff < copyLen ? engine.state[extOff + 0] >= 0.5 : false;
-          const airTimeSinceJump = extOff + 3 < copyLen ? engine.state[extOff + 3] : 0;
+          const onGround = buffer[carOff + 19] >= 0.5;
+          const hasFlipOrJump = buffer[carOff + 22] >= 0.5;
+          const isFlipping = buffer[carOff + 24] >= 0.5;
+          const isJumping = extOff < copyLen ? buffer[extOff + 0] >= 0.5 : false;
+          const airTimeSinceJump = extOff + 3 < copyLen ? buffer[extOff + 3] : 0;
 
           let hasJumped = 0;
           let hasDoubleJumped = 0;
@@ -412,27 +393,22 @@ export function restoreWasmSnapshotState(engine, buffer) {
               }
             }
           }
-          const word34 = onGround ? 0x01010101 : 0x00000000;
-          const word35 =
-            (isDemoed & 0xff) |
-            (hasJumped << 8) |
-            (hasDoubleJumped << 16) |
-            (hasFlipped << 24);
           const carSnapBase = wOffset + 169 + c * 504;
-          if (carSnapBase + 45 < wOffset + fullSnapSize) {
-            u32[carSnapBase + 34] = word34;
-            u32[carSnapBase + 35] = word35;
+          if (carSnapBase + 88 <= wOffset + fullSnapSize) {
+            const wheel3Contact = u32[carSnapBase + 35] & 0xff;
+            u32[carSnapBase + 35] =
+              wheel3Contact |
+              (hasJumped << 8) |
+              (hasDoubleJumped << 16) |
+              (hasFlipped << 24);
             if (!isFlipping) {
               f32[carSnapBase + 41] = 0;
             }
-          }
-          if (c === 0 && fullSnapSize >= 4201) {
-            u32[wOffset + 4003] = word34;
-            u32[wOffset + 4004] = word35;
-            u32[wOffset + 4051] = word34;
-            u32[wOffset + 4052] = word35;
-            u32[wOffset + 4139] = word34;
-            u32[wOffset + 4140] = word35;
+            // Clear stale car.state.ballHitInfo (words 71..87 of CarSnapshotPod) so restored compact
+            // snapshots never retain a future tickCountWhenHit from another timeline.
+            for (let w = 71; w <= 87; w++) {
+              u32[carSnapBase + w] = 0;
+            }
           }
         }
         engine.module._physics_restoreState(engine.wasmStatePtr);
