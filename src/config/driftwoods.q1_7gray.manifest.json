@@ -1,0 +1,92 @@
+{
+  "texture": "ground_q1_7gray_2048x3000.webp",
+  "resolution": {
+    "width": 2048,
+    "height": 3000
+  },
+  "uvMapping": {
+    "quadrant": "Q1",
+    "topLeft": {
+      "u": 0.0,
+      "v": 0.0,
+      "worldX": 0.0,
+      "worldY": 0.0
+    },
+    "bottomRight": {
+      "u": 1.0,
+      "v": 1.0,
+      "worldX": 4096.0,
+      "worldY": 6000.0
+    },
+    "formula": {
+      "u": "abs(worldX) / 4096.0",
+      "v": "abs(worldY) / 6000.0"
+    },
+    "wrapMode": "MirroredRepeatWrapping"
+  },
+  "layers": [
+    {
+      "id": "L0",
+      "name": "地面空余基底 (Ground Base)",
+      "centerGray": 0,
+      "normalizedValue": 0.000,
+      "rangeGray": [0, 20],
+      "rangeNormalized": [0.00, 0.08],
+      "defaultColor": "#141b24"
+    },
+    {
+      "id": "L1",
+      "name": "场地外边界线 (Perimeter Border)",
+      "centerGray": 42,
+      "normalizedValue": 0.165,
+      "rangeGray": [21, 63],
+      "rangeNormalized": [0.08, 0.25],
+      "defaultColor": "#38bdf8"
+    },
+    {
+      "id": "L2",
+      "name": "Boost Pad 判定内收环",
+      "centerGray": 85,
+      "normalizedValue": 0.333,
+      "rangeGray": [64, 106],
+      "rangeNormalized": [0.25, 0.42],
+      "defaultColor": "#929292"
+    },
+    {
+      "id": "L3",
+      "name": "核心实线 / 主圆弧 / 斜向引导",
+      "centerGray": 128,
+      "normalizedValue": 0.502,
+      "rangeGray": [107, 149],
+      "rangeNormalized": [0.42, 0.58],
+      "defaultColor": "#34d399"
+    },
+    {
+      "id": "L4",
+      "name": "车辆生成点碰撞箱四角框",
+      "centerGray": 170,
+      "normalizedValue": 0.667,
+      "rangeGray": [150, 191],
+      "rangeNormalized": [0.58, 0.75],
+      "defaultColor": "#e392fe"
+    },
+    {
+      "id": "L5",
+      "name": "内场衔接虚线弧",
+      "centerGray": 212,
+      "normalizedValue": 0.831,
+      "rangeGray": [192, 233],
+      "rangeNormalized": [0.75, 0.91],
+      "defaultColor": "#fb923c"
+    },
+    {
+      "id": "L6",
+      "name": "外围长距三点圆弧 & 后场虚线",
+      "centerGray": 255,
+      "normalizedValue": 1.000,
+      "rangeGray": [234, 255],
+      "rangeNormalized": [0.91, 1.00],
+      "defaultColor": "#f87171"
+    }
+  ]
+}

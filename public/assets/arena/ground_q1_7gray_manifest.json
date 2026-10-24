@@ -1,0 +1,98 @@
+{
+  "texture": "ground_q1_7gray_2048x3000.webp",
+  "url": "/assets/arena/ground_q1_7gray_2048x3000.webp",
+  "resolution": {
+    "width": 2048,
+    "height": 3000
+  },
+  "spatialMapping": {
+    "quadrant": "Q1",
+    "uvOriginTopLeft": {
+      "u": 0.0,
+      "v": 0.0,
+      "worldX": 0.0,
+      "worldY": 0.0
+    },
+    "uvExtentBottomRight": {
+      "u": 1.0,
+      "v": 1.0,
+      "worldX": 4096.0,
+      "worldY": 6000.0
+    },
+    "worldBoundsUu": {
+      "x": [-4096.0, 4096.0],
+      "y": [-6000.0, 6000.0],
+      "goalDepthRangeY": [5120.0, 6000.0]
+    },
+    "wrapMode": "MirroredRepeat",
+    "uvFormula": {
+      "u": "abs(worldX) / 4096.0",
+      "v": "abs(worldY) / 6000.0"
+    }
+  },
+  "layers": [
+    {
+      "id": "L0",
+      "name": "Ground Base",
+      "centerGray": 0,
+      "normalizedValue": 0.0,
+      "grayRange": [0, 20],
+      "normalizedRange": [0.0, 0.08],
+      "defaultColor": "#174000"
+    },
+    {
+      "id": "L1",
+      "name": "Perimeter Border",
+      "centerGray": 42,
+      "normalizedValue": 0.165,
+      "grayRange": [21, 63],
+      "normalizedRange": [0.08, 0.25],
+      "defaultColor": "#38bdf8"
+    },
+    {
+      "id": "L2",
+      "name": "Boost Pad Inner Ring",
+      "centerGray": 85,
+      "normalizedValue": 0.333,
+      "grayRange": [64, 106],
+      "normalizedRange": [0.25, 0.42],
+      "defaultColor": "#ffffff"
+    },
+    {
+      "id": "L3",
+      "name": "Core Solid Lines, Main Arcs & Diagonal Guides",
+      "centerGray": 128,
+      "normalizedValue": 0.502,
+      "grayRange": [107, 149],
+      "normalizedRange": [0.42, 0.58],
+      "defaultColor": "#ffffff"
+    },
+    {
+      "id": "L4",
+      "name": "Vehicle Spawn Hitbox Corner Brackets",
+      "centerGray": 170,
+      "normalizedValue": 0.667,
+      "grayRange": [150, 191],
+      "normalizedRange": [0.58, 0.75],
+      "defaultColor": "#606060"
+    },
+    {
+      "id": "L5",
+      "name": "Infield Connecting Dashed Arcs",
+      "centerGray": 212,
+      "normalizedValue": 0.831,
+      "grayRange": [192, 233],
+      "normalizedRange": [0.75, 0.91],
+      "defaultColor": "#444444"
+    },
+    {
+      "id": "L6",
+      "name": "Outer Long-Range Three-Point Arcs & Backfield Dashed Lines",
+      "centerGray": 255,
+      "normalizedValue": 1.0,
+      "grayRange": [234, 255],
+      "normalizedRange": [0.91, 1.0],
+      "defaultColor": "#f87171"
+    }
+  ]
+}
