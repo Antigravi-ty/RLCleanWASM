@@ -15,7 +15,6 @@ import {
 } from '../../input/MultiPlatformInput.js';
 import { DEFAULT_GRAPHICS_SETTINGS } from '../../config/trainingDefaults.js';
 import { garageSettingsStore } from '../../config/vehiclePresets.js';
-import { PerformanceProfiler } from '../../utils/PerformanceProfiler.js';
 import { MultiplayerSessionManager } from '../../network/multiplayer/MultiplayerSessionManager.js';
 import { BoostBloom } from '../../effects/BoostBloom.js';
 import { SupersonicSpeedLinesPass } from '../../effects/SupersonicSpeedLinesPass.js';
@@ -173,7 +172,6 @@ export async function setupRuntimeScene(runtime, onProgress = null) {
     }
   }
 
-  runtime.profiler = new PerformanceProfiler();
   const onToggleBallCam = () => {
     if (typeof runtime.camera.handleAction === 'function') {
       runtime.camera.handleAction('ballCam');

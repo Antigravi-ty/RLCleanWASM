@@ -32,16 +32,15 @@ async function bootApplication() {
       hint: 'Streaming and linking core runtime & 3D subsystems...'
     });
 
-    const uiMountPromise = import('./ui-system/index.tsx').then(({ mountGameUI }) => {
-      return host ? mountGameUI(host) : null;
-    });
-
-    const [{ bootstrapEngine }, gameUI] = await Promise.all([
+    const [
+      { bootstrapEngine },
+      { mountGameUI }
+    ] = await Promise.all([
       import('./game/GameBootstrap.js'),
-      uiMountPromise
+      import('./ui-system/index.tsx')
     ]);
 
-    await bootstrapEngine({ loader, gameUI });
+    await bootstrapEngine({ loader, mountUI: mountGameUI });
 
     if (isVerboseLogEnabled()) {
       console.log('[Engine] Rocket Companion Engine online — Free Play ready.');

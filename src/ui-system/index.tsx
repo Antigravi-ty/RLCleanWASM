@@ -33,12 +33,12 @@ export function mountGameUI(
   }
 
   let activeRuntime = gameRuntime;
-  const root: Root = createRoot(rootEl);
-  root.render(<GameUIRoot portalContainer={rootEl} />);
-
   if (activeRuntime) {
     attachGameRuntimeBridge(activeRuntime);
   }
+
+  const root: Root = createRoot(rootEl);
+  root.render(<GameUIRoot portalContainer={rootEl} />);
 
   return {
     openMenu: (route = 'main-menu') => useAppStore.getState().openMenu(route),

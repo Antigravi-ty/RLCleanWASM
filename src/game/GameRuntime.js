@@ -27,6 +27,7 @@ import { resolveVehicleHitboxId } from '../config/vehicleConstants.js';
 import { RenderClockScheduler } from './RenderClockScheduler.js';
 import { DEFAULT_TRAINING_SETTINGS } from '../config/trainingDefaults.js';
 import { FlipResetVisual } from '../effects/FlipResetVisual.js';
+import { PerformanceProfiler } from '../utils/PerformanceProfiler.js';
 
 // --- Architecture Pipeline & Modular Subsystems ---
 import { FramePipeline } from './pipeline/FramePipeline.js';
@@ -69,7 +70,7 @@ export class GameRuntime {
     this.keyboard = null;
     this.gamepad = null;
     this.gameUI = null;
-    this.profiler = null;
+    this.profiler = new PerformanceProfiler();
     this.physicsRate = 120;
     this.ballTrajectoryPredictor = null;
     this.determinismHarness = null;
