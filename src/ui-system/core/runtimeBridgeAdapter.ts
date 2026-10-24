@@ -186,14 +186,18 @@ export function attachGameRuntimeBridge(gameRuntime: any) {
       useAppStore.setState({ matchMode: 'kickoff-training' });
     },
     onStartStaticTrainingPack: () => {
-      if (!gameRuntime) return;
-      if (typeof gameRuntime.startStaticTrainingPack === 'function') {
-        gameRuntime.startStaticTrainingPack();
-      } else if (gameRuntime.match?.state) {
-        gameRuntime.match.state.mode = 'static-training-pack';
-        gameRuntime.modeManager?.setMode?.('static-training-pack');
-      }
       useAppStore.setState({ matchMode: 'static-training-pack' });
+      if (!gameRuntime) return;
+      try {
+        if (typeof gameRuntime.startStaticTrainingPack === 'function') {
+          gameRuntime.startStaticTrainingPack();
+        } else if (gameRuntime.match?.state) {
+          gameRuntime.match.state.mode = 'static-training-pack';
+          gameRuntime.modeManager?.setMode?.('static-training-pack');
+        }
+      } catch (err) {
+        console.error('[runtimeBridgeAdapter] Error starting static-training-pack:', err);
+      }
     },
     onStartDevTestLab: () => {
       if (!gameRuntime) return;
@@ -219,6 +223,18 @@ export function attachGameRuntimeBridge(gameRuntime: any) {
     onStartExpMultiBots: () => {
       if (!gameRuntime) return;
       useAppStore.getState().closeMenu();
+      floatingStore.setOpacity(70);
+      const exists = floatingStore
+        .getSnapshot()
+        .windows.some((w) => w.id === EXPERIMENTAL_MULTI_BOTS_PRESET.id);
+      if (!exists) {
+        floatingStore.spawnWindow({
+          ...EXPERIMENTAL_MULTI_BOTS_PRESET,
+          startMinimized: false,
+        });
+      } else {
+        floatingStore.restoreWindow(EXPERIMENTAL_MULTI_BOTS_PRESET.id);
+      }
       useExpMultiBotsStore.getState().setIsExhibitionMode(false);
       if (typeof gameRuntime.startExpMultiBots === 'function') {
         gameRuntime.startExpMultiBots();

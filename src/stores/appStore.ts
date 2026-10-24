@@ -171,6 +171,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   closeMenu: () => {
     set({ isOpen: false, activeRoute: 'main-menu', isLivePreviewCollapsed: false });
+    floatingStore.restoreAutoMinimizedWindows();
     const b = get().bridge;
     b.onOverlayChange?.(false);
     b.onResume?.();
@@ -196,21 +197,32 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   navigate: (route) => {
     const current = get().activeRoute;
+    const wasCollapsed = get().isLivePreviewCollapsed;
     if (route === 'exp-multi-bots-config') {
       lastExpMultiBotsParentRoute = current === 'main-menu' ? 'main-menu' : 'settings';
     }
     set({ activeRoute: route, isLivePreviewCollapsed: false });
+    if (wasCollapsed) {
+      get().bridge.onOverlayChange?.(true);
+    }
   },
 
   goBack: () => {
     const current = get().activeRoute;
+    const wasCollapsed = get().isLivePreviewCollapsed;
     if (current === 'exp-multi-bots-config') {
       set({ activeRoute: lastExpMultiBotsParentRoute, isLivePreviewCollapsed: false });
+      if (wasCollapsed) {
+        get().bridge.onOverlayChange?.(true);
+      }
       return;
     }
     const parent = ROUTE_PARENT_MAP[current];
     if (parent) {
       set({ activeRoute: parent, isLivePreviewCollapsed: false });
+      if (wasCollapsed) {
+        get().bridge.onOverlayChange?.(true);
+      }
     } else {
       get().closeMenu();
     }

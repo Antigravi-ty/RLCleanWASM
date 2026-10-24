@@ -77,6 +77,8 @@ const notify = () => {
   listeners.forEach((l) => l());
 };
 
+let autoRestoreIds = new Set<string>();
+
 export const floatingStore = {
   getSnapshot: () => state,
   subscribe: (listener: () => void) => {
@@ -183,6 +185,7 @@ export const floatingStore = {
   },
   /** Restore a window from the stack tray */
   restoreWindow: (id: string) => {
+    autoRestoreIds.delete(id);
     const nextOrder = state.windowOrder.filter((winId) => winId !== id).concat(id);
     state = {
       ...state,
@@ -193,8 +196,35 @@ export const floatingStore = {
     };
     notify();
   },
+  /** Restore all windows that were automatically minimized when opening the menu or spawned inside the menu */
+  restoreAutoMinimizedWindows: () => {
+    if (autoRestoreIds.size === 0) return;
+    const idsToRestore = Array.from(autoRestoreIds);
+    autoRestoreIds.clear();
+    const existingRestoreIds = idsToRestore.filter((id) =>
+      state.windows.some((w) => w.id === id)
+    );
+    if (existingRestoreIds.length === 0) return;
+
+    const restoreSet = new Set(existingRestoreIds);
+    const nextOrder = state.windowOrder
+      .filter((id) => !restoreSet.has(id))
+      .concat(existingRestoreIds);
+
+    state = {
+      ...state,
+      windows: state.windows.map((w) =>
+        restoreSet.has(w.id) ? { ...w, isMinimized: false } : w
+      ),
+      windowOrder: nextOrder,
+      focusedWindowId: existingRestoreIds[existingRestoreIds.length - 1] ?? state.focusedWindowId,
+      isStackTrayOpen: false,
+    };
+    notify();
+  },
   /** Close and destroy a window permanently */
   closeWindow: (id: string) => {
+    autoRestoreIds.delete(id);
     const nextWindows = state.windows.filter((w) => w.id !== id);
     const nextOrder = state.windowOrder.filter((wId) => wId !== id);
     const remainingMinimized = nextWindows.filter((w) => w.isMinimized).length;
@@ -240,6 +270,7 @@ export const floatingStore = {
   },
   /** Reset or clear all windows */
   clearAll: () => {
+    autoRestoreIds.clear();
     state = {
       ...state,
       windows: [],
@@ -297,8 +328,9 @@ export const floatingStore = {
   },
   /** Batch minimize all currently open floating windows with 3-phase collective collapse animation */
   triggerBatchMinimize: () => {
-    const hasOpen = state.windows.some((w) => !w.isMinimized);
-    if (!hasOpen) return;
+    const openWindows = state.windows.filter((w) => !w.isMinimized);
+    if (openWindows.length === 0) return;
+    openWindows.forEach((w) => autoRestoreIds.add(w.id));
     state = {
       ...state,
       batchMinimizeSignal: state.batchMinimizeSignal + 1,
@@ -309,8 +341,9 @@ export const floatingStore = {
   },
   /** Minimize all currently open floating windows into the stack icon (defaults to animation) */
   minimizeAllWindows: (immediate = false) => {
-    const hasOpen = state.windows.some((w) => !w.isMinimized);
-    if (!hasOpen) return;
+    const openWindows = state.windows.filter((w) => !w.isMinimized);
+    if (openWindows.length === 0) return;
+    openWindows.forEach((w) => autoRestoreIds.add(w.id));
     if (!immediate) {
       floatingStore.triggerBatchMinimize();
       return;
@@ -332,6 +365,7 @@ export const floatingStore = {
 
     const isSingleton = preset.singleton ?? false;
     const winId = isSingleton ? preset.id : `${preset.id}-${Date.now().toString().slice(-4)}`;
+    autoRestoreIds.add(winId);
 
     // If singleton already exists, minimize it and focus it
     const existingIndex = state.windows.findIndex((w) => w.id === winId);

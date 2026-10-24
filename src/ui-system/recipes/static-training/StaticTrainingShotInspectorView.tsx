@@ -81,6 +81,10 @@ export const StaticTrainingShotInspectorView: React.FC<StaticTrainingShotInspect
   const isDirty = isCurrentShotDirty();
   const limitBoostAmount = !currentShot.car.unlimitedBoost;
   const hasFlip = currentShot.car.hasFlip !== false;
+  const speedFollowsHeading = currentShot.car.speedFollowsHeading !== false;
+  const visibleSubModeOptions = speedFollowsHeading
+    ? SUB_MODE_OPTIONS.filter((opt) => opt.id !== 'car-speed')
+    : SUB_MODE_OPTIONS;
 
   const sectionBg = isLight
     ? 'bg-white border-neutral-200 text-neutral-900'
@@ -136,7 +140,7 @@ export const StaticTrainingShotInspectorView: React.FC<StaticTrainingShotInspect
         </button>
       </div>
 
-      {/* 2. Top Quick Action Bar: Air Roll Reset Level + 4 Sub-Mode Buttons */}
+      {/* 2. Top Quick Action Bar: Air Roll Reset Level + Sub-Mode Buttons */}
       <div className={`p-2.5 rounded-xl border flex flex-col gap-2 ${sectionBg}`}>
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 text-[10px] font-mono opacity-80">
@@ -150,6 +154,9 @@ export const StaticTrainingShotInspectorView: React.FC<StaticTrainingShotInspect
               mutateActiveEditItemVariable((d) => {
                 d.car.airRoll = 0;
                 d.car.headingPitch = 0;
+                if (d.car.speedFollowsHeading !== false) {
+                  d.car.speedPitch = 0;
+                }
               })
             }
             onMouseEnter={() =>
@@ -167,15 +174,23 @@ export const StaticTrainingShotInspectorView: React.FC<StaticTrainingShotInspect
           </button>
         </div>
 
-        <div className="grid grid-cols-4 gap-1.5">
-          {SUB_MODE_OPTIONS.map((opt) => {
+        <div
+          className={`grid gap-1.5 ${
+            visibleSubModeOptions.length === 3 ? 'grid-cols-3' : 'grid-cols-4'
+          }`}
+        >
+          {visibleSubModeOptions.map((opt) => {
             const active = editSubMode === opt.id;
+            const hintText =
+              opt.id === 'car-heading' && speedFollowsHeading
+                ? 'WASD/Space/V Move Car • Drag Mouse = Car Heading & Pitch • [ / ] = Car Speed • Q/E = Air Roll • O/P = Boost'
+                : opt.hint;
             return (
               <button
                 key={opt.id}
                 type="button"
                 onClick={() => setEditSubMode(opt.id)}
-                onMouseEnter={() => onHoverDesc(opt.hint)}
+                onMouseEnter={() => onHoverDesc(hintText)}
                 onMouseLeave={() => onHoverDesc(null)}
                 className={`flex items-center justify-center gap-1 py-1.5 px-1.5 rounded-lg border text-[10px] font-bold transition-all cursor-pointer ${
                   active
@@ -252,7 +267,36 @@ export const StaticTrainingShotInspectorView: React.FC<StaticTrainingShotInspect
           isLight={isLight}
         />
 
-        {/* (c) Snap to Ground Toggle Switch (Default ON) */}
+        {/* (c) Align Speed with Car Nose Toggle Switch (Default ON) */}
+        <div className="flex items-center justify-between py-0.5 px-1">
+          <div className="flex flex-col">
+            <span className="text-[11px] font-semibold">Align Speed with Car Nose</span>
+            <span className="text-[10px] opacity-65">
+              {speedFollowsHeading
+                ? 'Velocity follows car heading ([ / ] adjusts speed in Car Heading)'
+                : 'Independent car velocity direction (Car Speed sub-mode enabled)'}
+            </span>
+          </div>
+          <ToggleSwitch
+            checked={speedFollowsHeading}
+            onCheckedChange={(checked) => {
+              mutateActiveEditItemVariable((d) => {
+                d.car.speedFollowsHeading = checked;
+                if (checked) {
+                  d.car.speedYaw = d.car.headingYaw;
+                  d.car.speedPitch = d.car.snapToGround ? 0 : d.car.headingPitch;
+                }
+              });
+              if (checked && editSubMode === 'car-speed') {
+                setEditSubMode('car-heading');
+              }
+            }}
+            isLight={isLight}
+            variant="neutral"
+          />
+        </div>
+
+        {/* (d) Snap to Ground Toggle Switch (Default ON) */}
         <div className="flex items-center justify-between py-0.5 px-1">
           <div className="flex flex-col">
             <span className="text-[11px] font-semibold">Snap to Ground</span>
@@ -270,6 +314,9 @@ export const StaticTrainingShotInspectorView: React.FC<StaticTrainingShotInspect
                   d.car.headingPitch = 0;
                   d.car.airRoll = 0;
                   d.car.hasFlip = true;
+                  if (d.car.speedFollowsHeading !== false) {
+                    d.car.speedPitch = 0;
+                  }
                 } else if (d.car.location[2] < 45) {
                   d.car.location[2] = 120;
                 }
@@ -280,7 +327,7 @@ export const StaticTrainingShotInspectorView: React.FC<StaticTrainingShotInspect
           />
         </div>
 
-        {/* (d) Has Flip Toggle Switch (Default ON; when airborne & OFF, spawns without flip) */}
+        {/* (e) Has Flip Toggle Switch (Default ON; when airborne & OFF, spawns without flip) */}
         <div className="flex items-center justify-between py-0.5 px-1">
           <div className="flex flex-col">
             <span className="text-[11px] font-semibold">Has Flip</span>
@@ -310,7 +357,7 @@ export const StaticTrainingShotInspectorView: React.FC<StaticTrainingShotInspect
           />
         </div>
 
-        {/* (e) Random Angular Velocity Toggle Switch (Default ON) */}
+        {/* (f) Random Angular Velocity Toggle Switch (Default ON) */}
         <div className="flex items-center justify-between py-0.5 px-1">
           <div className="flex flex-col">
             <span className="text-[11px] font-semibold">Random Angular Velocity</span>
@@ -380,7 +427,7 @@ export const StaticTrainingShotInspectorView: React.FC<StaticTrainingShotInspect
           </div>
         )}
 
-        {/* (f) Show Advanced Toggle Switch (Default OFF, never persisted) */}
+        {/* (g) Show Advanced Toggle Switch (Default OFF, never persisted) */}
         <div className="flex items-center justify-between py-0.5 px-1 border-t border-neutral-500/15 pt-2">
           <div className="flex flex-col">
             <span className="text-[11px] font-semibold">Show Advanced</span>
@@ -458,6 +505,9 @@ export const StaticTrainingShotInspectorView: React.FC<StaticTrainingShotInspect
             onChange={(deg) =>
               mutateActiveEditItemVariable((d) => {
                 d.car.headingYaw = degToRad(deg);
+                if (d.car.speedFollowsHeading !== false) {
+                  d.car.speedYaw = d.car.headingYaw;
+                }
               })
             }
             isLight={isLight}
@@ -473,6 +523,9 @@ export const StaticTrainingShotInspectorView: React.FC<StaticTrainingShotInspect
               mutateActiveEditItemVariable((d) => {
                 d.car.headingPitch = degToRad(deg);
                 if (deg !== 0) d.car.snapToGround = false;
+                if (d.car.speedFollowsHeading !== false) {
+                  d.car.speedPitch = d.car.headingPitch;
+                }
               })
             }
             isLight={isLight}
@@ -507,34 +560,38 @@ export const StaticTrainingShotInspectorView: React.FC<StaticTrainingShotInspect
             }
             isLight={isLight}
           />
-          <CompactNumberSlider
-            label="Car Speed Yaw"
-            value={radToDeg(currentShot.car.speedYaw)}
-            min={-180}
-            max={180}
-            step={1}
-            unit="°"
-            onChange={(deg) =>
-              mutateActiveEditItemVariable((d) => {
-                d.car.speedYaw = degToRad(deg);
-              })
-            }
-            isLight={isLight}
-          />
-          <CompactNumberSlider
-            label="Car Speed Pitch"
-            value={radToDeg(currentShot.car.speedPitch)}
-            min={-85}
-            max={85}
-            step={1}
-            unit="°"
-            onChange={(deg) =>
-              mutateActiveEditItemVariable((d) => {
-                d.car.speedPitch = degToRad(deg);
-              })
-            }
-            isLight={isLight}
-          />
+          {!speedFollowsHeading && (
+            <>
+              <CompactNumberSlider
+                label="Car Speed Yaw"
+                value={radToDeg(currentShot.car.speedYaw)}
+                min={-180}
+                max={180}
+                step={1}
+                unit="°"
+                onChange={(deg) =>
+                  mutateActiveEditItemVariable((d) => {
+                    d.car.speedYaw = degToRad(deg);
+                  })
+                }
+                isLight={isLight}
+              />
+              <CompactNumberSlider
+                label="Car Speed Pitch"
+                value={radToDeg(currentShot.car.speedPitch)}
+                min={-85}
+                max={85}
+                step={1}
+                unit="°"
+                onChange={(deg) =>
+                  mutateActiveEditItemVariable((d) => {
+                    d.car.speedPitch = degToRad(deg);
+                  })
+                }
+                isLight={isLight}
+              />
+            </>
+          )}
 
           <div className="pt-2 border-t border-neutral-500/15 flex flex-col gap-2">
             <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-sky-400">

@@ -204,7 +204,15 @@ export function launchStaticTrainingShotNow(mode) {
   const carLoc = car.location || car.pos || [0, -2400, CAR_GROUND_MIN_Z];
   const ballLoc = ball.location || ball.pos || [0, 0, BALL_GROUND_MIN_Z];
 
-  const carVel = computeLaunchVelocity(car.speed, car.speedYaw, car.speedPitch);
+  const effSpeedYaw =
+    car.speedFollowsHeading !== false ? car.headingYaw : (car.speedYaw ?? car.headingYaw);
+  const effSpeedPitch =
+    car.speedFollowsHeading !== false
+      ? car.snapToGround
+        ? 0
+        : car.headingPitch
+      : (car.speedPitch ?? car.headingPitch);
+  const carVel = computeLaunchVelocity(car.speed, effSpeedYaw, effSpeedPitch);
   const boostVal = car.unlimitedBoost
     ? 100
     : Math.max(0, Math.min(100, Number(car.initialBoost) || 0));
@@ -272,7 +280,15 @@ export function launchFreeCamTrajectoryPreview(mode) {
   const { car, ball } = shot;
   const carLoc = car.location || car.pos || [0, -2400, CAR_GROUND_MIN_Z];
   const ballLoc = ball.location || ball.pos || [0, 0, BALL_GROUND_MIN_Z];
-  const carVel = computeLaunchVelocity(car.speed, car.speedYaw, car.speedPitch);
+  const effSpeedYaw =
+    car.speedFollowsHeading !== false ? car.headingYaw : (car.speedYaw ?? car.headingYaw);
+  const effSpeedPitch =
+    car.speedFollowsHeading !== false
+      ? car.snapToGround
+        ? 0
+        : car.headingPitch
+      : (car.speedPitch ?? car.headingPitch);
+  const carVel = computeLaunchVelocity(car.speed, effSpeedYaw, effSpeedPitch);
   const boostVal = car.unlimitedBoost
     ? 100
     : Math.max(0, Math.min(100, Number(car.initialBoost) || 0));

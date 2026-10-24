@@ -207,7 +207,7 @@ export class StaticTrainingVisuals {
     );
 
     // Car Heading direction vector in Three.js
-    const chPitch = Number(car.headingPitch) || 0;
+    const chPitch = car.snapToGround ? 0 : Number(car.headingPitch) || 0;
     const chYaw = Number(car.headingYaw) || 0;
     const carHeadingDirThree = new THREE.Vector3(
       Math.cos(chPitch) * Math.cos(chYaw),
@@ -216,8 +216,13 @@ export class StaticTrainingVisuals {
     );
 
     // Car Speed direction vector in Three.js
-    const csPitch = Number(car.speedPitch ?? car.headingPitch) || 0;
-    const csYaw = Number(car.speedYaw ?? car.headingYaw) || 0;
+    const followsHeading = car.speedFollowsHeading !== false;
+    const csPitch = followsHeading
+      ? chPitch
+      : Number(car.speedPitch ?? car.headingPitch) || 0;
+    const csYaw = followsHeading
+      ? chYaw
+      : Number(car.speedYaw ?? car.headingYaw) || 0;
     const carSpeedDirThree = new THREE.Vector3(
       Math.cos(csPitch) * Math.cos(csYaw),
       Math.sin(csPitch),
@@ -236,14 +241,15 @@ export class StaticTrainingVisuals {
     // 1. Update Car Speed Direction Arrow
     const carSpeedVal = Number(car.speed) || 0;
     if (isEditMode) {
-      this.carSpeedArrow.visible = carSpeedVal > 0 || editSubMode === 'car-speed' || editSubMode === 'free-cam';
+      this.carSpeedArrow.visible =
+        carSpeedVal > 0 || editSubMode === 'car-speed' || editSubMode === 'free-cam';
       const arrowLen = 150 + (carSpeedVal / 2300) * 340;
       update3DArrowMesh(
         this.carSpeedArrow,
         carPosThree,
         carSpeedDirThree,
         arrowLen,
-        editSubMode === 'car-speed'
+        editSubMode === 'car-speed' || (followsHeading && editSubMode === 'car-heading' && carSpeedVal > 0)
       );
     } else if (showPlayArrows) {
       // In Play Mode before player moves: always show Car Speed Direction arrow

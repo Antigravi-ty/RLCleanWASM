@@ -5,6 +5,7 @@ import { useAppStore } from '../stores/appStore';
 import { copyAndLogLayoutSnapshot } from './core/UIInspector';
 import { floatingStore } from '../stores/floatingStore';
 import { OPACITY_MANAGER_PRESET } from '../stores/floatingPresets';
+import { useStaticTrainingPackStore } from '../stores/staticTrainingPackStore';
 import { Copy, Check } from 'lucide-react';
 
 export interface GameUIRootProps {
@@ -90,7 +91,14 @@ export const GameUIRoot: React.FC<GameUIRootProps> = ({ portalContainer }) => {
 
         if (state.isOpen) {
           if (state.isLivePreviewCollapsed) {
-            state.setLivePreviewCollapsed(false);
+            if (
+              state.activeRoute === 'static-training-pack-session' &&
+              useStaticTrainingPackStore.getState().sessionMode === 'play'
+            ) {
+              state.goBack();
+            } else {
+              state.setLivePreviewCollapsed(false);
+            }
           } else {
             state.goBack();
           }

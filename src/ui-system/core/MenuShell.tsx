@@ -39,6 +39,7 @@ import { Layer3DevUnderDevelopmentRecipe } from '../recipes/Layer3DevUnderDevelo
 import { Layer4StaticTrainingPackBrowseRecipe } from '../recipes/Layer4StaticTrainingPackBrowseRecipe';
 import { Layer5StaticTrainingPackSessionRecipe } from '../recipes/Layer5StaticTrainingPackSessionRecipe';
 import { useStaticTrainingPackStore } from '../../stores/staticTrainingPackStore';
+import { StaticTrainingPackHUD } from '../hud/StaticTrainingPackHUD';
 
 export type LivePreviewAnimPhase =
   | 'expanded'
@@ -243,6 +244,9 @@ export const MenuShell: React.FC<MenuShellProps> = ({ inspectorSlot }) => {
       {/* 1. Floating Window Manager (Strict Layering: z-[5], above game arena, below backdrop mask) */}
       <FloatingWindowManager isLight={isLight} />
 
+      {/* 1.5. Static Training Pack Top Floating HUD (Strict Layering: z-[35], visible above menu backdrop) */}
+      {matchMode === 'static-training-pack' && <StaticTrainingPackHUD isLight={isLight} />}
+
       {/* 2. Floating Stack Icon (Strict Layering: z-50, top-right persistent tray) */}
       <FloatingStackIcon
         isLight={isLight}
@@ -380,8 +384,9 @@ export const MenuShell: React.FC<MenuShellProps> = ({ inspectorSlot }) => {
               await store.selectPack(uuid);
               store.setSessionMode('play');
               bridge.onStartStaticTrainingPack?.('play');
-              setLiveAnimPhase('expanded');
               navigate('static-training-pack-session');
+              setLiveAnimPhase('collapsed');
+              setLivePreviewCollapsed(true);
             }}
             onStartEditSession={async (uuid) => {
               const store = useStaticTrainingPackStore.getState();

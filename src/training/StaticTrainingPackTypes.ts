@@ -25,10 +25,16 @@ export interface StaticTrainingCarConfig {
   airRoll: number;
   /** Initial linear speed magnitude in UU/s (0 .. 2300) */
   speed: number;
-  /** Initial linear velocity yaw in radians (independent of headingYaw) */
+  /** Initial linear velocity yaw in radians (independent of headingYaw when speedFollowsHeading is false) */
   speedYaw: number;
-  /** Initial linear velocity pitch in radians (independent of headingPitch) */
+  /** Initial linear velocity pitch in radians (independent of headingPitch when speedFollowsHeading is false) */
   speedPitch: number;
+  /**
+   * When true (default), car launch speed direction stays aligned with the car's nose
+   * (speedYaw = headingYaw, speedPitch = headingPitch), allowing speed adjustment via [ / ]
+   * directly inside Car Heading mode and hiding the redundant Car Speed sub-mode icon.
+   */
+  speedFollowsHeading: boolean;
   /**
    * When true, car is spawned at ground level first and settled for 60 frames
    * so wheel suspension stabilizes before spawning the ball and launching.
@@ -121,6 +127,7 @@ export function createDefaultShotItem(index = 0): StaticTrainingShotItem {
       speed: 0,
       speedYaw: Math.PI / 2,
       speedPitch: 0,
+      speedFollowsHeading: true,
       snapToGround: true,
       hasFlip: true,
       initialBoost: 100,
@@ -156,6 +163,12 @@ export function cloneShotItem(
     ? rawBall.pos
     : [0, 0, 93.15];
 
+  const headingYaw = Number(rawCar.headingYaw ?? Math.PI / 2);
+  const headingPitch = Number(rawCar.headingPitch ?? 0);
+  const snapToGround = Boolean(rawCar.snapToGround ?? true);
+  const speedFollowsHeading =
+    rawCar.speedFollowsHeading !== undefined ? Boolean(rawCar.speedFollowsHeading) : true;
+
   return {
     id: typeof item?.id === 'string' && item.id ? item.id : generateUUID(),
     index: idx,
@@ -169,13 +182,20 @@ export function cloneShotItem(
         Number(carLoc[1]) || -2400,
         Number(carLoc[2]) || 17.05,
       ],
-      headingYaw: Number(rawCar.headingYaw ?? Math.PI / 2),
-      headingPitch: Number(rawCar.headingPitch ?? 0),
+      headingYaw,
+      headingPitch,
       airRoll: Number(rawCar.airRoll ?? 0),
       speed: Math.max(0, Math.min(2300, Number(rawCar.speed) || 0)),
-      speedYaw: Number(rawCar.speedYaw ?? rawCar.headingYaw ?? Math.PI / 2),
-      speedPitch: Number(rawCar.speedPitch ?? rawCar.headingPitch ?? 0),
-      snapToGround: Boolean(rawCar.snapToGround ?? true),
+      speedYaw: speedFollowsHeading
+        ? headingYaw
+        : Number(rawCar.speedYaw ?? headingYaw),
+      speedPitch: speedFollowsHeading
+        ? snapToGround
+          ? 0
+          : headingPitch
+        : Number(rawCar.speedPitch ?? headingPitch),
+      speedFollowsHeading,
+      snapToGround,
       hasFlip: rawCar.hasFlip !== undefined ? Boolean(rawCar.hasFlip) : true,
       initialBoost: Math.max(0, Math.min(100, Number(rawCar.initialBoost ?? 100))),
       unlimitedBoost:
@@ -223,6 +243,7 @@ export function areShotItemsEqual(
     !eqNum(ca.speed, cb.speed) ||
     !eqNum(ca.speedYaw, cb.speedYaw) ||
     !eqNum(ca.speedPitch, cb.speedPitch) ||
+    Boolean(ca.speedFollowsHeading ?? true) !== Boolean(cb.speedFollowsHeading ?? true) ||
     Boolean(ca.snapToGround) !== Boolean(cb.snapToGround) ||
     Boolean(ca.hasFlip ?? true) !== Boolean(cb.hasFlip ?? true) ||
     !eqNum(ca.initialBoost, cb.initialBoost) ||
@@ -280,6 +301,7 @@ export function createStarterShots(uuid = 'starter-aerial-striker-pack'): Static
         speed: 650,
         speedYaw: Math.PI / 2,
         speedPitch: 0,
+        speedFollowsHeading: true,
         snapToGround: true,
         hasFlip: true,
         initialBoost: 100,
@@ -308,6 +330,7 @@ export function createStarterShots(uuid = 'starter-aerial-striker-pack'): Static
         speed: 0,
         speedYaw: 1.18,
         speedPitch: 0,
+        speedFollowsHeading: true,
         snapToGround: true,
         hasFlip: true,
         initialBoost: 100,
@@ -336,6 +359,7 @@ export function createStarterShots(uuid = 'starter-aerial-striker-pack'): Static
         speed: 900,
         speedYaw: 1.72,
         speedPitch: 0,
+        speedFollowsHeading: true,
         snapToGround: true,
         hasFlip: true,
         initialBoost: 100,

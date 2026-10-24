@@ -49,8 +49,17 @@ export const MatchHeaderHUD: React.FC<MatchHeaderHUDProps> = ({
   const onReplayCycleSpeed = useHudStore((s) => s.onReplayCycleSpeed);
   const onReplayToggleCameraMode = useHudStore((s) => s.onReplayToggleCameraMode);
 
+  const matchMode = useAppStore((s) => s.matchMode);
   const isBlueWin = winner === 0 || winner === 'BLUE';
   const isOrangeWin = winner === 1 || winner === 'ORANGE';
+
+  if (
+    matchMode === 'static-training-pack' &&
+    matchPhase !== 'goal' &&
+    matchPhase !== 'replay'
+  ) {
+    return null;
+  }
 
   return (
     <div

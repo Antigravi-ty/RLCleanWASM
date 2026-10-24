@@ -189,6 +189,8 @@ export interface StaticTrainingPackStoreState {
   // Down Counter & Telemetry
   setDownCounterEnabled: (enabled: boolean) => void;
   setDownCounterValue: (val: StaticPackDownCounterOption) => void;
+  setFreeCamTrajectoryTesting: (active: boolean) => void;
+  setTestingSingleShot: (active: boolean) => void;
   updateLiveTelemetry: (
     patch: Partial<{
       remainingTimeoutSec: number;
@@ -709,11 +711,17 @@ export const useStaticTrainingPackStore = create<StaticTrainingPackStoreState>((
     const draft = cloneShotItem(targetItem, targetIdx);
     activeEditItemVariable = cloneShotItem(draft, targetIdx);
 
+    const nextSubMode =
+      draft.car.speedFollowsHeading !== false && get().editSubMode === 'car-speed'
+        ? 'car-heading'
+        : get().editSubMode;
+
     set((s) => ({
       sessionMode: 'edit',
       currentShotIndex: targetIdx,
       isEditingItem: true,
       activeEditItemDraft: draft,
+      editSubMode: nextSubMode,
       editVarVersion: s.editVarVersion + 1,
     }));
 
@@ -775,11 +783,19 @@ export const useStaticTrainingPackStore = create<StaticTrainingPackStoreState>((
 
   cycleEditSubMode: (delta: 1 | -1) => {
     const cur = get().editSubMode;
-    const idx = EDIT_SUB_MODES_ORDER.indexOf(cur);
-    const nextIdx =
-      ((idx + delta) % EDIT_SUB_MODES_ORDER.length + EDIT_SUB_MODES_ORDER.length) %
-      EDIT_SUB_MODES_ORDER.length;
-    const nextMode = EDIT_SUB_MODES_ORDER[nextIdx];
+    const currentItem =
+      activeEditItemVariable ||
+      get().activeEditItemDraft ||
+      get().activePack?.items?.[get().currentShotIndex] ||
+      get().activeItems?.[get().currentShotIndex];
+    const alignsSpeedWithNose = currentItem?.car?.speedFollowsHeading !== false;
+    const order: EditSubMode[] = alignsSpeedWithNose
+      ? ['car-heading', 'ball-speed', 'free-cam']
+      : EDIT_SUB_MODES_ORDER;
+    const curIdx = order.indexOf(cur);
+    const baseIdx = curIdx >= 0 ? curIdx : 0;
+    const nextIdx = ((baseIdx + delta) % order.length + order.length) % order.length;
+    const nextMode = order[nextIdx];
     set({ editSubMode: nextMode });
     get().runtimeHandlers.onEditSubModeChanged?.(nextMode);
     return nextMode;
@@ -798,6 +814,14 @@ export const useStaticTrainingPackStore = create<StaticTrainingPackStoreState>((
     if (get().sessionMode === 'play' && get().downCounterEnabled) {
       get().resetCurrentShot();
     }
+  },
+
+  setFreeCamTrajectoryTesting: (active: boolean) => {
+    set({ isFreeCamTrajectoryTesting: Boolean(active) });
+  },
+
+  setTestingSingleShot: (active: boolean) => {
+    set({ isTestingSingleShot: Boolean(active) });
   },
 
   updateLiveTelemetry: (patch) => {

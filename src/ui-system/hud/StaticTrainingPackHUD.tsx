@@ -47,6 +47,7 @@ export const StaticTrainingPackHUD: React.FC<StaticTrainingPackHUDProps> = ({
     (s) => s.isFreeCamTrajectoryTesting
   );
   const isTestingSingleShot = useStaticTrainingPackStore((s) => s.isTestingSingleShot);
+  const setEditSubMode = useStaticTrainingPackStore((s) => s.setEditSubMode);
 
   void editVarVersion;
 
@@ -65,13 +66,17 @@ export const StaticTrainingPackHUD: React.FC<StaticTrainingPackHUDProps> = ({
   const isUnlimitedBoost = Boolean(shot.car.unlimitedBoost);
   const boostAmount = Math.round(shot.car.initialBoost ?? 100);
   const hasFlip = Boolean(shot.car.snapToGround || shot.car.hasFlip !== false);
+  const speedFollowsHeading = shot.car.speedFollowsHeading !== false;
+  const visibleModeIcons = speedFollowsHeading
+    ? MODE_ICONS.filter((m) => m.id !== 'car-speed')
+    : MODE_ICONS;
 
   const normalTextColor = isLight ? 'text-neutral-900' : 'text-neutral-100';
 
   return (
     <div
       data-ui-element="static-training-pack-hud"
-      className="absolute top-14 left-1/2 -translate-x-1/2 z-30 pointer-events-none select-none flex flex-col items-center gap-1.5"
+      className="absolute top-4 left-1/2 -translate-x-1/2 z-[35] pointer-events-none select-none flex flex-col items-center gap-1.5"
     >
       <div
         className={`px-4 py-2 rounded-xl border font-mono text-xs flex items-center gap-4 backdrop-blur-md shadow-lg ${
@@ -87,7 +92,7 @@ export const StaticTrainingPackHUD: React.FC<StaticTrainingPackHUDProps> = ({
 
         <span className="opacity-30">|</span>
 
-        {/* 2. Center: 4 Mode Icons in Edit Mode, or Timer in Play Mode / Single-Shot Test */}
+        {/* 2. Center: Mode Icons in Edit Mode, or Timer in Play Mode / Single-Shot Test */}
         {sessionMode === 'play' || isTestingSingleShot ? (
           <div className="flex items-center gap-3">
             <span
@@ -118,25 +123,27 @@ export const StaticTrainingPackHUD: React.FC<StaticTrainingPackHUDProps> = ({
             )}
           </div>
         ) : (
-          <div className="flex items-center gap-1.5">
-            {MODE_ICONS.map((m) => {
+          <div className="flex items-center gap-1.5 pointer-events-auto">
+            {visibleModeIcons.map((m) => {
               const active = editSubMode === m.id;
               return (
-                <div
+                <button
                   key={m.id}
+                  type="button"
+                  onClick={() => setEditSubMode(m.id)}
                   title={m.title}
-                  className={`p-1.5 rounded-lg border transition-all flex items-center justify-center ${
+                  className={`p-1.5 rounded-lg border transition-all flex items-center justify-center cursor-pointer ${
                     active
                       ? isLight
                         ? 'bg-amber-500 border-amber-600 text-white shadow-sm scale-105'
                         : 'bg-amber-400/25 border-amber-400 text-amber-300 shadow-[0_0_10px_rgba(251,191,36,0.35)] scale-105'
                       : isLight
-                      ? 'bg-neutral-100/70 border-neutral-200 text-neutral-400 opacity-50'
-                      : 'bg-neutral-900/60 border-neutral-800 text-neutral-500 opacity-45'
+                      ? 'bg-neutral-100/70 hover:bg-neutral-200 border-neutral-200 text-neutral-400 opacity-60 hover:opacity-100'
+                      : 'bg-neutral-900/60 hover:bg-neutral-800 border-neutral-800 text-neutral-500 opacity-55 hover:opacity-100'
                   }`}
                 >
                   {m.icon}
-                </div>
+                </button>
               );
             })}
             {isFreeCamTrajectoryTesting && (

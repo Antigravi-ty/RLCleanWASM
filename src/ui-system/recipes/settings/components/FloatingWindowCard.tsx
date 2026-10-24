@@ -1,6 +1,7 @@
 import React from 'react';
-import { Plus, X } from 'lucide-react';
+import { Plus, X, ExternalLink } from 'lucide-react';
 import { useFloatingStore, floatingStore, type FloatingWindowConfig } from '../../../../stores/floatingStore';
+import { useAppStore } from '../../../../stores/appStore';
 
 export interface FloatingWindowCardProps {
   preset: FloatingWindowConfig;
@@ -71,14 +72,32 @@ export const FloatingWindowCard: React.FC<FloatingWindowCardProps> = ({
 
       <div className="flex items-center gap-2 shrink-0 ml-3">
         {existingWindow ? (
-          <button
-            type="button"
-            onClick={() => floatingStore.closeWindow(preset.id)}
-            title={`Close "${preset.title}"`}
-            className="h-8 w-8 rounded-xl border flex items-center justify-center cursor-pointer transition-all active:scale-95 outline-none bg-red-500/15 hover:bg-red-500/25 border-red-400/40 text-red-500 shrink-0"
-          >
-            <X className="h-4 w-4 stroke-[2.5]" />
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={() => {
+                floatingStore.restoreWindow(preset.id);
+                useAppStore.getState().closeMenu();
+              }}
+              title={`Open "${preset.title}" now`}
+              className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-all active:scale-95 border shrink-0 ${
+                isLight
+                  ? 'bg-neutral-900 hover:bg-neutral-800 text-white border-neutral-800'
+                  : 'bg-neutral-100 hover:bg-white text-neutral-950 font-bold border-neutral-200'
+              }`}
+            >
+              <ExternalLink className="h-3.5 w-3.5 stroke-[2.2]" />
+              <span>Open</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => floatingStore.closeWindow(preset.id)}
+              title={`Close "${preset.title}"`}
+              className="h-8 w-8 rounded-xl border flex items-center justify-center cursor-pointer transition-all active:scale-95 outline-none bg-red-500/15 hover:bg-red-500/25 border-red-400/40 text-red-500 shrink-0"
+            >
+              <X className="h-4 w-4 stroke-[2.5]" />
+            </button>
+          </>
         ) : (
           <button
             type="button"

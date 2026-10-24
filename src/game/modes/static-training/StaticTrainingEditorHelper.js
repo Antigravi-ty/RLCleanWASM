@@ -335,12 +335,12 @@ export function bindStaticTrainingSessionEvents(mode) {
         mode.reloadCurrentShot();
         return;
       }
-      if ((code === 'BracketLeft' || evt.key === '[') && !evt.repeat) {
+      if ((code === 'BracketLeft' || evt.key === '[' || code === 'Digit9') && !evt.repeat) {
         evt.preventDefault();
         store.prevShot();
         return;
       }
-      if ((code === 'BracketRight' || evt.key === ']') && !evt.repeat) {
+      if ((code === 'BracketRight' || evt.key === ']' || code === 'Digit0') && !evt.repeat) {
         evt.preventDefault();
         store.nextShot();
         return;
@@ -390,6 +390,21 @@ export function bindStaticTrainingSessionEvents(mode) {
       mode.heldKeys.add(code);
 
       // Discrete single-press transitions:
+      // 0. Backslash (\) zeroes out speed in car-heading (when speedFollowsHeading), car-speed, or ball-speed
+      if (code === 'Backslash' && !evt.repeat) {
+        mutateActiveEditItemVariable((draft) => {
+          if (
+            subMode === 'car-speed' ||
+            (subMode === 'car-heading' && draft.car.speedFollowsHeading !== false)
+          ) {
+            draft.car.speed = 0;
+          } else if (subMode === 'ball-speed') {
+            draft.ball.speed = 0;
+            draft.ball.kickoffState = false;
+          }
+        });
+      }
+
       // 1. V at ground -> snapToGround
       if (code === 'KeyV' && !evt.repeat && (subMode === 'car-heading' || subMode === 'car-speed')) {
         const item = getActiveEditItemVariable();
@@ -399,6 +414,9 @@ export function bindStaticTrainingSessionEvents(mode) {
             draft.car.snapToGround = true;
             draft.car.headingPitch = 0;
             draft.car.airRoll = 0;
+            if (draft.car.speedFollowsHeading !== false) {
+              draft.car.speedPitch = 0;
+            }
           });
         }
       }
@@ -515,6 +533,10 @@ export function bindStaticTrainingSessionEvents(mode) {
               Math.min(Math.PI * 0.48, draft.car.headingPitch - dy * sens)
             ).toFixed(4)
           );
+        }
+        if (draft.car.speedFollowsHeading !== false) {
+          draft.car.speedYaw = draft.car.headingYaw;
+          draft.car.speedPitch = draft.car.snapToGround ? 0 : draft.car.headingPitch;
         }
       } else if (subMode === 'car-speed') {
         draft.car.speedYaw = Number((draft.car.speedYaw - dx * sens).toFixed(4));

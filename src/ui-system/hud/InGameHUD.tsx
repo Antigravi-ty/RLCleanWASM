@@ -6,7 +6,6 @@ import { CircularBoostGauge } from './CircularBoostGauge';
 import { MatchHeaderHUD } from './MatchHeaderHUD';
 import { KickoffKeyboardOverlay } from './KickoffKeyboardOverlay';
 import { SpeedometerHUD } from './SpeedometerHUD';
-import { StaticTrainingPackHUD } from './StaticTrainingPackHUD';
 
 export interface InGameHUDProps {
   className?: string;
@@ -178,9 +177,6 @@ export const InGameHUD: React.FC<InGameHUDProps> = ({ className = '' }) => {
 
       {/* 4. Top-Center: Minimal Match Header HUD (Score & Timer & Kickoff) */}
       <MatchHeaderHUD isLight={isLight} />
-
-      {/* 5. Top-Center Sub-Banner: Static Training Pack HUD */}
-      {matchMode === 'static-training-pack' && <StaticTrainingPackHUD isLight={isLight} />}
     </div>
   );
 };

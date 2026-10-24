@@ -27,10 +27,12 @@ import {
   ensureStaticTrainingSinglePlayerCar,
   applyStagedShotToArena,
   launchStaticTrainingShotNow,
+  launchFreeCamTrajectoryPreview,
   spinBallMeshInPlace,
 } from './static-training/StaticTrainingArenaHelper.js';
 import {
   POST_GOAL_CELEBRATION_TICKS,
+  POST_EXPIRE_CELEBRATION_TICKS,
   POST_GOAL_FREEZE_DELAY_TICKS,
   beginStaticTrainingReplaySession,
   completeStaticTrainingReplayAndAdvanceNextShot,
@@ -59,11 +61,14 @@ export class StaticTrainingPackMode extends BaseGameMode {
     this.visuals = null;
     this.isReplayActive = false;
     this.replayType = 'goal'; // 'goal' | 'expire'
+    this.replayPendingType = 'goal';
     this.replayCameraMode = 'director';
     this.goalResetTicks = 0;
     this.lastKickoffStartTick = 0;
 
-    // Play session state
+    // Play & Edit test session state
+    this.isFreeCamTrajectoryTesting = false;
+    this.isTestingSingleShot = false;
     this.playPhase = 'waiting-input'; // 'countdown' | 'waiting-input' | 'live' | 'goal' | 'replay'
     this.countdownTicksRemaining = 0;
     this.lastCountdownBeepSec = -1;
