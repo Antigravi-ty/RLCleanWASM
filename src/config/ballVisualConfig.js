@@ -10,6 +10,7 @@ export const DEFAULT_BALL_VISUAL_CONFIG = {
   doubleSideWhenTransparent: false,
   wireframe: false,
   indicatorRingOpacity: 0.2,
+  goalDarkenJitterEnabled: true,
 };
 
 export const ballVisualRuntimeConfig = {

@@ -95,6 +95,15 @@ export const BallTab: React.FC<BallTabProps> = ({
           isLight={isLight}
         />
 
+        <ToggleSwitch
+          label="In-Goal Black Flicker & Jitter Effect"
+          description="Turns the portion of the ball inside the goal plane dark with a high-frequency black strobe and jitter"
+          checked={ballConfig.goalDarkenJitterEnabled !== false}
+          onChange={(checked) => applyBallPatch({ goalDarkenJitterEnabled: checked })}
+          disabled={ballConfig.visible === false}
+          isLight={isLight}
+        />
+
         <div className="pt-1 border-t border-neutral-700/40 flex flex-col gap-2">
           <span className="font-bold text-[11px]">Ground Projection Indicator Rings</span>
           <SliderControl

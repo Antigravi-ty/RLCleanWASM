@@ -20,6 +20,7 @@ import { createDriftwoodsManager, setExperimentalWallFxRuntimeConfig } from './s
 import { loadThrowbackStadiumField, loadThrowbackCollisionOverlay } from './stadium/ThrowbackStadiumLoader.js';
 import { setVehicleReceiveShadows } from './vehicle/vehiclePaintMaterial.js';
 import { GoalBarrierVisual } from './arena/GoalBarrierVisual.js';
+import { GoalVolumeHitboxVisual } from './arena/GoalVolumeHitboxVisual.js';
 
 export class ArenaWorld {
   constructor(ballRadius, defaultCarVisual = "fennec") {
@@ -49,7 +50,8 @@ export class ArenaWorld {
 
     this.sky = createStadiumDomeSky();
     this.goalBarrierVisual = new GoalBarrierVisual();
-    this.scene.add(this.sky, this.ball, this.goalBarrierVisual.group);
+    this.goalVolumeHitboxVisual = new GoalVolumeHitboxVisual();
+    this.scene.add(this.sky, this.ball, this.goalBarrierVisual.group, this.goalVolumeHitboxVisual.group);
     if (this.ballLocatorArrow?.object) this.scene.add(this.ballLocatorArrow.object);
     if (this.ballSpeedTrail?.object) this.scene.add(this.ballSpeedTrail.object);
 
@@ -75,6 +77,7 @@ export class ArenaWorld {
     this.throwbackStadium = null;
     this.throwbackCollisionOverlay = null;
     this.isThrowbackStadiumActive = false;
+    this.collisionOverlayRequested = false;
 
     this._headerView = new ArenaHeaderView();
     this._currCarView = new CarStateView(); this._prevCarView = new CarStateView();
@@ -88,11 +91,20 @@ export class ArenaWorld {
   }
 
   get opponentSun() { return this.lighting.opponentSun; } set opponentSun(v) { this.lighting.opponentSun = v; }
-  get carHitboxesVisible() { return this.vehicleRegistry.carHitboxesVisible; } set carHitboxesVisible(v) { this.vehicleRegistry.carHitboxesVisible = v; }
+  get carHitboxesVisible() { return this.vehicleRegistry.carHitboxesVisible; }
+  set carHitboxesVisible(v) {
+    this.vehicleRegistry.carHitboxesVisible = v;
+    this._syncGoalVolumeHitboxVisibility();
+  }
   get carColors() { return this.vehicleRegistry.carColors; } set carColors(v) { this.vehicleRegistry.carColors = v; }
   get flatCarAsset() { return this.vehicleRegistry.flatCarAsset; } set flatCarAsset(v) { this.vehicleRegistry.flatCarAsset = v; }
   get stadiumVisible() { return this.envManager.stadiumVisible; } set stadiumVisible(v) { this.envManager.stadiumVisible = v; }
   get driftwoodsStadiumVisible() { return this.envManager.driftwoodsStadiumVisible; } set driftwoodsStadiumVisible(v) { this.envManager.driftwoodsStadiumVisible = v; }
+
+  _syncGoalVolumeHitboxVisibility() {
+    const show = Boolean(this.collisionOverlayRequested || this.vehicleRegistry?.carHitboxesVisible);
+    this.goalVolumeHitboxVisual?.setVisible(show);
+  }
 
   resetBallTrail() { this.ballSpeedTrail?.reset(); }
   resetCarBoosts(carIndex = null) { this.vehicleRegistry?.resetCarBoosts?.(carIndex); }
@@ -155,6 +167,7 @@ export class ArenaWorld {
   async setThrowbackStadiumActive(enabled, showCollisionOverlay = false) {
     const next = Boolean(enabled);
     this.isThrowbackStadiumActive = next;
+    this.goalVolumeHitboxVisual?.setArenaPreset(next);
     if (next) {
       if (!this.throwbackStadium) {
         this.throwbackStadium = await loadThrowbackStadiumField();
@@ -179,13 +192,16 @@ export class ArenaWorld {
       if (this.driftwoodsStadium) {
         this.driftwoodsStadium.visible = Boolean(this.stadiumVisible);
       }
+      this.collisionOverlayRequested = Boolean(showCollisionOverlay);
+      this._syncGoalVolumeHitboxVisibility();
     }
     this.markRenderTreeChanged();
   }
 
   async setThrowbackCollisionVisible(visible) {
     const next = Boolean(visible);
-    if (next) {
+    this.collisionOverlayRequested = next;
+    if (next && this.isThrowbackStadiumActive) {
       if (!this.throwbackCollisionOverlay) {
         this.throwbackCollisionOverlay = await loadThrowbackCollisionOverlay();
       }
@@ -194,8 +210,9 @@ export class ArenaWorld {
       }
     }
     if (this.throwbackCollisionOverlay) {
-      this.throwbackCollisionOverlay.visible = next;
+      this.throwbackCollisionOverlay.visible = Boolean(next && this.isThrowbackStadiumActive);
     }
+    this._syncGoalVolumeHitboxVisibility();
     this.markRenderTreeChanged();
   }
 
@@ -231,7 +248,10 @@ export class ArenaWorld {
   swapCarVisual(carIndex, newVisual) { return this.vehicleRegistry.swapCarVisual(carIndex, newVisual); }
   refreshCustomVehicle(vehicleId) { return this.vehicleRegistry.refreshCustomVehicle?.(vehicleId); }
   removeCar(carIndex) { return this.vehicleRegistry.removeCar(carIndex); }
-  setCarHitboxesVisible(visible) { this.vehicleRegistry.setCarHitboxesVisible(visible); }
+  setCarHitboxesVisible(visible) {
+    this.vehicleRegistry.setCarHitboxesVisible(visible);
+    this._syncGoalVolumeHitboxVisibility();
+  }
   prepareBallSpeedTrail(camera) { this.ballSpeedTrail?.prepare(camera); }
 
   addPads(padDefs) {
@@ -310,6 +330,7 @@ export class ArenaWorld {
     this.ballSpeedTrail?.dispose?.();
     this.ballLocatorArrow?.dispose?.();
     this.goalBarrierVisual?.dispose?.();
+    this.goalVolumeHitboxVisual?.dispose?.();
     this.nameTagSystem?.dispose?.();
     this.lighting?.dispose?.();
     this.vehicleRegistry?.dispose?.();

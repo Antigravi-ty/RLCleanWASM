@@ -11,7 +11,8 @@ import {
 import {
   SIM_OFFSETS, EXTENDED_STATE_OFFSETS, BALL_CONTROL_MODES, BALL_STATE_STRIDE,
   CAR_STATE_STRIDE, BOOST_PAD_STATES_OFFSET, BOOST_PAD_STATE_STRIDE,
-  NUM_BOOST_PADS, PHYSICS_EVENT_TYPES, PHYSICS_EVENT_FLAGS, EVENT_TOTAL_BUFFER_BYTES
+  NUM_BOOST_PADS, PHYSICS_EVENT_TYPES, PHYSICS_EVENT_FLAGS, EVENT_TOTAL_BUFFER_BYTES,
+  BALL_COLLISION_RADIUS, STANDARD_GOAL_VOLUME_BOX, THROWBACK_GOAL_VOLUME_BOX
 } from './RocketSimConstants.js';
 import {
   CarStateView, BallStateView, ArenaHeaderView, BoostPadStateView, GameStateView
@@ -24,7 +25,10 @@ import {
 } from './RocketSimSnapshotHelper.js';
 import { isPointInGoalBarrier } from '../config/goalBarrierConfig.ts';
 
-export { PLAYER_CAR_INDEX, BOT_CAR_INDEX, getTeamAssignment, getHitboxIndex };
+export {
+  PLAYER_CAR_INDEX, BOT_CAR_INDEX, getTeamAssignment, getHitboxIndex,
+  STANDARD_GOAL_VOLUME_BOX, THROWBACK_GOAL_VOLUME_BOX
+};
 
 export class RocketSimPhysicsEngine {
   static cachedCollisionData = null;
@@ -51,6 +55,8 @@ export class RocketSimPhysicsEngine {
     this.baseCollisionData = null;
     this.goalBarrierChunks = [];
     this.goalBarrierMeta = null;
+    this.arenaPreset = 0;
+    this.goalVolumeBox = { ...STANDARD_GOAL_VOLUME_BOX, enabled: false };
     this._carSpecs = [];
     this._accumulatedBluePossessionPts = 0;
     this._accumulatedOrangePossessionPts = 0;
@@ -82,6 +88,7 @@ export class RocketSimPhysicsEngine {
     initWasmCollisionMeshes(this.module, effectiveChunks);
 
     if (this.module._physics_createArena() !== 1) throw new Error('Arena creation failed');
+    this._syncGoalVolumeBoxToWasm();
     this._carSpecs = [];
 
     this.statePtr = this.module._physics_getStatePtr();
@@ -308,11 +315,67 @@ export class RocketSimPhysicsEngine {
   }
 
   setArenaPreset(presetIndex = 0) {
-    this.module?._physics_setArenaPreset?.(presetIndex);
+    this.arenaPreset = presetIndex === 1 ? 1 : 0;
+    const baseBox = this.arenaPreset === 1 ? THROWBACK_GOAL_VOLUME_BOX : STANDARD_GOAL_VOLUME_BOX;
+    this.goalVolumeBox = {
+      ...baseBox,
+      enabled: this.arenaPreset === 1
+    };
+    this.module?._physics_setArenaPreset?.(this.arenaPreset);
+    this._syncGoalVolumeBoxToWasm();
   }
 
   getArenaPreset() {
-    return this.module?._physics_getArenaPreset?.() ?? 0;
+    return this.module?._physics_getArenaPreset?.() ?? this.arenaPreset ?? 0;
+  }
+
+  _syncGoalVolumeBoxToWasm() {
+    if (!this.module?._physics_setGoalVolumeBox) return;
+    const box = this.goalVolumeBox || (this.arenaPreset === 1 ? THROWBACK_GOAL_VOLUME_BOX : STANDARD_GOAL_VOLUME_BOX);
+    const enabled = this.arenaPreset === 1 || Boolean(box.enabled);
+    this.module._physics_setGoalVolumeBox(
+      enabled ? 1 : 0,
+      box.halfWidthX,
+      box.minY,
+      box.maxY,
+      box.maxZ
+    );
+  }
+
+  getGoalVolumeConfig() {
+    const preset = this.getArenaPreset();
+    const box = this.goalVolumeBox || (preset === 1 ? THROWBACK_GOAL_VOLUME_BOX : STANDARD_GOAL_VOLUME_BOX);
+    return {
+      isThrowback: preset === 1,
+      enabled: preset === 1 || Boolean(box.enabled),
+      halfWidthX: box.halfWidthX,
+      minY: box.minY,
+      maxY: box.maxY,
+      minZ: box.minZ ?? 0.0,
+      maxZ: box.maxZ,
+      ballRadius: BALL_COLLISION_RADIUS
+    };
+  }
+
+  isBallScored(ballView = this.getBallStateView()) {
+    if (!ballView) return false;
+    const x = ballView.posX;
+    const y = ballView.posY;
+    const z = ballView.posZ;
+    if (this.hasActiveGoalBarrier(y)) return false;
+
+    const absY = Math.abs(y);
+    const r = BALL_COLLISION_RADIUS;
+    const cfg = this.getGoalVolumeConfig();
+
+    if (cfg.enabled) {
+      const margin = 0.25 * r;
+      if (Math.abs(x) >= cfg.halfWidthX - margin) return false;
+      if (z <= cfg.minZ || z >= cfg.maxZ - margin) return false;
+      return absY > cfg.minY + r && absY < cfg.maxY;
+    }
+
+    return absY > STANDARD_GOAL_VOLUME_BOX.minY + r;
   }
 
   async reloadMeshes(manifestPath = '/arenamesh/manifest.json') {
@@ -347,6 +410,7 @@ export class RocketSimPhysicsEngine {
     initWasmCollisionMeshes(this.module, effectiveChunks);
     this.setArenaPreset(savedPreset);
     if (this.module._physics_createArena() !== 1) return false;
+    this._syncGoalVolumeBoxToWasm();
 
     this._carSpecs = [];
     for (let i = 0; i < savedNumCars; i++) {
@@ -391,7 +455,21 @@ export class RocketSimPhysicsEngine {
     return true;
   }
 
-  setGoalVolumeBox(enabled = true, halfWidthX = 960.0, minY = 4909.31, maxY = 5757.31, maxZ = 648.0) {
+  setGoalVolumeBox(
+    enabled = true,
+    halfWidthX = THROWBACK_GOAL_VOLUME_BOX.halfWidthX,
+    minY = THROWBACK_GOAL_VOLUME_BOX.minY,
+    maxY = THROWBACK_GOAL_VOLUME_BOX.maxY,
+    maxZ = THROWBACK_GOAL_VOLUME_BOX.maxZ
+  ) {
+    this.goalVolumeBox = {
+      enabled: Boolean(enabled),
+      halfWidthX,
+      minY,
+      maxY,
+      minZ: 0.0,
+      maxZ
+    };
     this.module?._physics_setGoalVolumeBox?.(enabled ? 1 : 0, halfWidthX, minY, maxY, maxZ);
   }
 
@@ -478,6 +556,7 @@ export class RocketSimPhysicsEngine {
   configureCars(hitboxType, isMatch, defaultPlayerTeam = 0) {
     const { playerTeam, botTeam } = getTeamAssignment(hitboxType === 'flat');
     if (this.module._physics_createArena() !== 1) throw new Error('Arena creation failed');
+    this._syncGoalVolumeBoxToWasm();
     this._carSpecs = [];
     this.clearEvents();
     if (this.addCar(isMatch ? playerTeam : defaultPlayerTeam, hitboxType) !== PLAYER_CAR_INDEX) {

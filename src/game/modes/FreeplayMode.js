@@ -223,15 +223,17 @@ export class FreeplayMode extends BaseGameMode {
     }
 
     // 5. Check Goal Scored
-    if (r.trainingOptions?.disableGoalReset) return;
+    if (r.trainingOptions?.disableGoalReset) {
+      sim.resetGoalLatch?.();
+      return;
+    }
 
-    const hasBarrierOnGoal = Boolean(bView && sim.hasActiveGoalBarrier?.(bView.posY));
-    const goalYThreshold = hasBarrierOnGoal ? 5120 + 88 : 5120;
-    const goalScored =
+    const goalScored = Boolean(
       bView &&
-      Math.abs(bView.posY) > goalYThreshold &&
-      Math.abs(bView.posX) < 893 &&
-      bView.posZ < 643;
+      (typeof sim.isBallScored === 'function'
+        ? sim.isBallScored(bView)
+        : Math.abs(bView.posY) > 5120 + 91.25 && Math.abs(bView.posX) < 892.755 && bView.posZ < 642.775)
+    );
 
     if (goalScored) {
       const blueScored = bView.posY > 0;

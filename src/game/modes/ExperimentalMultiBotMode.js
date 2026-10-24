@@ -587,8 +587,12 @@ export class ExperimentalMultiBotMode extends BaseGameMode {
     }
 
     // 5. Check Goal Scored
-    const goalScored =
-      Math.abs(bView.posY) > 5120 && Math.abs(bView.posX) < 893 && bView.posZ < 643;
+    const goalScored = Boolean(
+      bView &&
+      (typeof sim.isBallScored === 'function'
+        ? sim.isBallScored(bView)
+        : Math.abs(bView.posY) > 5120 + 91.25 && Math.abs(bView.posX) < 892.755 && bView.posZ < 642.775)
+    );
     if (goalScored) {
       const blueScored = bView.posY > 0;
       const scoringTeam = blueScored ? 0 : 1;

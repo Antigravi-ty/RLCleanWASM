@@ -8,6 +8,7 @@ import { updateCarSuspensionAndSteering } from '../VehicleSuspensionSystem.js';
 import { updateBoostVisuals } from './ArenaVehicleAnimator.js';
 import { updateVehicleBrakeLamps } from '../vehicle/customGlbCarModel.js';
 import { updateSkyboxFrame } from './ArenaSky.js';
+import { updateBallGoalEffect } from '../BallVisual.js';
 
 export function updateArenaFrame(arena, prevState, currState, alpha, delta = 0, throttle = 0, controls, opponentControls, activeVisuals = true, carControlsResolver = null) {
   let actualDelta = delta;
@@ -25,6 +26,7 @@ export function updateArenaFrame(arena, prevState, currState, alpha, delta = 0, 
   arena.ballSpeedTrail?.update(arena.ball.position, arena.ballVelocity, actualDelta);
 
   const ballPos = arena.ball.position;
+  updateBallGoalEffect(arena.ball, Boolean(arena.isThrowbackStadiumActive), actualDelta);
   arena.driftwoodsManager?.updateBallProximity?.(ballPos, arena.ballVelocity, actualDelta);
   arena.goalBarrierVisual?.update?.(actualDelta);
   arena.indicatorRing.position.set(ballPos.x, 2, ballPos.z);

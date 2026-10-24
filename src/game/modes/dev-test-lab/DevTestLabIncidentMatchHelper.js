@@ -406,7 +406,9 @@ export function stepIncidentMatchTick(mode, store) {
 
   // 4. Check Goal Scored
   const bView = sim.getBallStateView();
-  const goalScored = Math.abs(bView.posY) > 5120 && Math.abs(bView.posX) < 893 && bView.posZ < 643;
+  const goalScored = typeof sim.isBallScored === 'function'
+    ? sim.isBallScored(bView)
+    : (Math.abs(bView.posY) > 5120 + 91.25 && Math.abs(bView.posX) < 892.755 && bView.posZ < 642.775);
   if (goalScored) {
     const blueScored = bView.posY > 0;
     mode.incidentBlueScore += blueScored ? 1 : 0;

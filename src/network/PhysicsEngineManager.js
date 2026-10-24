@@ -429,7 +429,10 @@ export class PhysicsEngineManager {
         }
         if (!goalScored && typeof this.sim?.getBallStateView === 'function') {
           const b = this.sim.getBallStateView();
-          if (Math.abs(b.posY) > 5120 && Math.abs(b.posX) < 893 && b.posZ < 643) {
+          const scored = typeof this.sim.isBallScored === 'function'
+            ? this.sim.isBallScored(b)
+            : (Math.abs(b.posY) > 5120 + 91.25 && Math.abs(b.posX) < 892.755 && b.posZ < 642.775);
+          if (scored) {
             goalScored = true;
             goalTeam = b.posY > 0 ? 0 : 1;
           }

@@ -176,6 +176,22 @@ export const GOAL_EXTENTS = Object.freeze({
   HEIGHT: 642.775
 });
 
+export const STANDARD_GOAL_VOLUME_BOX = Object.freeze({
+  halfWidthX: 892.755,
+  minY: 5120.0,
+  maxY: 6000.0,
+  minZ: 0.0,
+  maxZ: 642.775
+});
+
+export const THROWBACK_GOAL_VOLUME_BOX = Object.freeze({
+  halfWidthX: 940.0,
+  minY: 4922.0,
+  maxY: 5460.0,
+  minZ: 0.0,
+  maxZ: 640.0
+});
+
 export const BALL_CONTROL_MODES = Object.freeze([
   'takePossession',
   'startDribble',

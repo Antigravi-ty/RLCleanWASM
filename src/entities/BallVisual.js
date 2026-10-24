@@ -149,6 +149,10 @@ export function createClassicBall(patternColor = null) {
 
 import { getThemeMaterial, isMultiThemeMaterial } from '../effects/ThemeMaterialPipeline.js';
 import {
+  STANDARD_GOAL_VOLUME_BOX,
+  THROWBACK_GOAL_VOLUME_BOX,
+} from '../physics/RocketSimConstants.js';
+import {
   DEFAULT_BALL_VISUAL_CONFIG,
   ballVisualRuntimeConfig,
   getBallVisualConfig,
@@ -167,8 +171,86 @@ export {
 
 const activeBallCompositeGroups = new Set();
 
+const ballGoalUniforms = {
+  uGoalEffectEnabled: { value: 1.0 },
+  uGoalPlaneMinY: { value: STANDARD_GOAL_VOLUME_BOX.minY },
+  uGoalPlaneMaxY: { value: STANDARD_GOAL_VOLUME_BOX.maxY },
+  uGoalHalfWidthX: { value: STANDARD_GOAL_VOLUME_BOX.halfWidthX },
+  uGoalMaxZ: { value: STANDARD_GOAL_VOLUME_BOX.maxZ },
+  uGoalTime: { value: 0.0 },
+  uGoalPenetration: { value: 0.0 },
+  uGoalJitterWorldOffset: { value: new THREE.Vector3(0, 0, 0) },
+};
+
+function attachBallGoalShader(mat) {
+  if (!mat || mat.userData?.hasBallGoalShader) return;
+  mat.userData = mat.userData || {};
+  mat.userData.hasBallGoalShader = true;
+
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uGoalEffectEnabled = ballGoalUniforms.uGoalEffectEnabled;
+    shader.uniforms.uGoalPlaneMinY = ballGoalUniforms.uGoalPlaneMinY;
+    shader.uniforms.uGoalPlaneMaxY = ballGoalUniforms.uGoalPlaneMaxY;
+    shader.uniforms.uGoalHalfWidthX = ballGoalUniforms.uGoalHalfWidthX;
+    shader.uniforms.uGoalMaxZ = ballGoalUniforms.uGoalMaxZ;
+    shader.uniforms.uGoalTime = ballGoalUniforms.uGoalTime;
+    shader.uniforms.uGoalPenetration = ballGoalUniforms.uGoalPenetration;
+    shader.uniforms.uGoalJitterWorldOffset = ballGoalUniforms.uGoalJitterWorldOffset;
+
+    shader.vertexShader =
+      `varying vec3 vBallWorldPos;\nuniform vec3 uGoalJitterWorldOffset;\n` +
+      shader.vertexShader.replace(
+        '#include <project_vertex>',
+        `vec4 mvPosition = vec4( transformed, 1.0 );
+#ifdef USE_INSTANCING
+  mvPosition = instanceMatrix * mvPosition;
+#endif
+vec4 ballWorldPosition = modelMatrix * mvPosition;
+vBallWorldPos = ballWorldPosition.xyz;
+ballWorldPosition.xyz += uGoalJitterWorldOffset;
+mvPosition = viewMatrix * ballWorldPosition;
+gl_Position = projectionMatrix * mvPosition;`
+      );
+
+    shader.fragmentShader =
+      `varying vec3 vBallWorldPos;
+uniform float uGoalEffectEnabled;
+uniform float uGoalPlaneMinY;
+uniform float uGoalPlaneMaxY;
+uniform float uGoalHalfWidthX;
+uniform float uGoalMaxZ;
+uniform float uGoalTime;
+uniform float uGoalPenetration;
+` +
+      shader.fragmentShader.replace(
+        '#include <dithering_fragment>',
+        `#include <dithering_fragment>
+if (uGoalEffectEnabled > 0.5 && uGoalPenetration > 0.001) {
+  float absZ = abs(vBallWorldPos.z);
+  float inMouthX = 1.0 - smoothstep(uGoalHalfWidthX - 6.0, uGoalHalfWidthX + 6.0, abs(vBallWorldPos.x));
+  float inMouthY = 1.0 - smoothstep(uGoalMaxZ - 6.0, uGoalMaxZ + 6.0, vBallWorldPos.y);
+  float inDepthBack = 1.0 - smoothstep(uGoalPlaneMaxY - 8.0, uGoalPlaneMaxY + 8.0, absZ);
+  float sliceDist = absZ - uGoalPlaneMinY;
+  float insideMask = smoothstep(-3.0, 3.0, sliceDist) * inMouthX * inMouthY * inDepthBack;
+  if (insideMask > 0.001) {
+    float strobeA = step(0.0, sin(uGoalTime * 95.0));
+    float strobeB = 0.5 + 0.5 * sin(uGoalTime * 57.0 + sliceDist * 0.12);
+    float flickerLuma = mix(0.015, 0.13, strobeA * 0.65 + strobeB * 0.35);
+    float boundarySeam = (1.0 - smoothstep(0.0, 5.5, abs(sliceDist))) * inMouthX * inMouthY * inDepthBack;
+    float seamLuma = boundarySeam * (0.12 + 0.10 * strobeA);
+    vec3 goalDarkColor = vec3(flickerLuma + seamLuma);
+    gl_FragColor.rgb = mix(gl_FragColor.rgb, goalDarkColor, insideMask);
+  }
+}`
+      );
+  };
+  mat.customProgramCacheKey = () => 'ball-goal-darken-jitter-v1';
+  mat.needsUpdate = true;
+}
+
 function applyConfigToSingleMaterial(mat, config) {
   if (!mat) return;
+  attachBallGoalShader(mat);
   const opacity = Math.max(0, Math.min(1, Number(config.opacity) ?? 1.0));
   const isTransparent = opacity < 0.999;
   const targetDepthWrite = isTransparent ? Boolean(config.depthWriteWhenTransparent) : true;
@@ -191,6 +273,7 @@ function applyConfigToSingleMaterial(mat, config) {
 }
 
 export function applyBallVisualConfigToObject(ballRoot, config = ballVisualRuntimeConfig, indicatorRings = []) {
+  ballGoalUniforms.uGoalEffectEnabled.value = config.goalDarkenJitterEnabled !== false ? 1.0 : 0.0;
   if (ballRoot) {
     ballRoot.visible = config.visible !== false && (Number(config.opacity) ?? 1.0) > 0.001;
     ballRoot.traverse?.((node) => {
@@ -217,6 +300,54 @@ export function applyBallVisualConfigToObject(ballRoot, config = ballVisualRunti
       }
     }
   }
+}
+
+export function updateBallGoalEffect(ballGroup, isThrowback = false, delta = 0) {
+  if (!ballGroup) return;
+  const dt = Number.isFinite(delta) && delta > 0 ? Math.min(delta, 0.1) : 1 / 120;
+  ballGoalUniforms.uGoalTime.value += dt;
+
+  const box = isThrowback ? THROWBACK_GOAL_VOLUME_BOX : STANDARD_GOAL_VOLUME_BOX;
+  ballGoalUniforms.uGoalPlaneMinY.value = box.minY;
+  ballGoalUniforms.uGoalPlaneMaxY.value = box.maxY;
+  ballGoalUniforms.uGoalHalfWidthX.value = box.halfWidthX;
+  ballGoalUniforms.uGoalMaxZ.value = box.maxZ;
+
+  const enabled = ballVisualRuntimeConfig.goalDarkenJitterEnabled !== false;
+  ballGoalUniforms.uGoalEffectEnabled.value = enabled ? 1.0 : 0.0;
+  if (!enabled) {
+    ballGoalUniforms.uGoalPenetration.value = 0.0;
+    ballGoalUniforms.uGoalJitterWorldOffset.value.set(0, 0, 0);
+    return;
+  }
+
+  const pos = ballGroup.position;
+  const xUu = pos.x;
+  const zUu = pos.y;
+  const absYUu = Math.abs(pos.z);
+  const r = CLASSIC_BALL_RADIUS;
+
+  const inMouth =
+    Math.abs(xUu) < box.halfWidthX + r * 0.35 &&
+    zUu > (box.minZ ?? 0.0) - r * 0.25 &&
+    zUu < box.maxZ + r * 0.35 &&
+    absYUu < box.maxY + r * 0.25;
+
+  if (!inMouth || absYUu <= box.minY - r) {
+    ballGoalUniforms.uGoalPenetration.value = 0.0;
+    ballGoalUniforms.uGoalJitterWorldOffset.value.set(0, 0, 0);
+    return;
+  }
+
+  const penetration = Math.max(0.0, Math.min(1.0, (absYUu - (box.minY - r)) / (2.0 * r)));
+  ballGoalUniforms.uGoalPenetration.value = penetration;
+
+  const t = ballGoalUniforms.uGoalTime.value;
+  const amp = (1.6 + 4.2 * penetration) * penetration;
+  const jx = Math.sin(t * 137.0) * Math.cos(t * 59.0) * amp;
+  const jy = Math.cos(t * 151.0) * Math.sin(t * 73.0) * amp;
+  const jz = Math.sin(t * 179.0 + 1.3) * amp * 0.85;
+  ballGoalUniforms.uGoalJitterWorldOffset.value.set(jx, jy, jz);
 }
 
 registerBallVisualApplier((config, ballRoot, indicatorRings) => {
