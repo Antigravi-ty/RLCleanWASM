@@ -156,8 +156,13 @@ export async function setupRuntimeScene(runtime, onProgress = null) {
 
   runtime.selectedPreset = selectedPreset;
 
-  if (runtime.container && typeof document !== 'undefined' && typeof runtime.options?.mountUI === 'function') {
-    runtime.gameUI = runtime.options.mountUI(runtime.container, runtime);
+  if (runtime.container && typeof document !== 'undefined') {
+    if (runtime.options?.gameUI) {
+      runtime.gameUI = runtime.options.gameUI;
+      runtime.gameUI.attachToRuntime?.(runtime);
+    } else if (typeof runtime.options?.mountUI === 'function') {
+      runtime.gameUI = runtime.options.mountUI(runtime.container, runtime);
+    }
     const carBtn = runtime.container.querySelector('#car-button');
     if (carBtn) {
       carBtn.onclick = (e) => {

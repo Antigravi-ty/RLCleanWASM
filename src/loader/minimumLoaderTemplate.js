@@ -5,7 +5,6 @@ export const MINIMUM_LOADER_HTML = `
   </div>
 
   <div class="hig-loader-content">
-    <!-- Top Header: Brand & Identity -->
     <div class="hig-brand-header">
       <div class="hig-emblem-badge">
         <span class="hig-emblem-text">RL</span>
@@ -16,13 +15,11 @@ export const MINIMUM_LOADER_HTML = `
       </div>
     </div>
 
-    <!-- Center: Dual Progress Bar Core -->
     <div class="hig-dual-card">
-      <!-- 1. Layer One: Overall Pipeline Progress -->
       <div class="hig-layer hig-layer-overall">
         <div class="hig-layer-header">
           <div class="hig-layer-meta">
-            <span class="hig-stage-badge" id="hig-stage-indicator">STAGE 1 OF 7</span>
+            <span class="hig-stage-badge" id="hig-stage-indicator">STAGE 1 OF 6</span>
             <span class="hig-separator">•</span>
             <span class="hig-stage-name" id="hig-stage-title">Security Preflight</span>
           </div>
@@ -33,26 +30,22 @@ export const MINIMUM_LOADER_HTML = `
         </div>
       </div>
 
-      <!-- 2. Layer Two: Active Micro-Step Progress -->
       <div class="hig-layer hig-layer-micro">
         <div class="hig-layer-header">
           <span class="hig-task-title" id="hig-task-name">Initializing Bootstrap Runtime...</span>
           <span class="hig-task-status-badge" id="hig-task-status-badge">INDETERMINATE</span>
         </div>
 
-        <!-- Lower Progress Bar Track: Switches between Determinate Fill and Indeterminate Shimmer -->
         <div class="hig-track hig-track-secondary" id="hig-secondary-track">
           <div class="hig-fill hig-fill-secondary hig-shimmer" id="hig-secondary-fill" style="width: 100%;"></div>
         </div>
 
-        <!-- Micro Metrics Subtext (Bytes, Speed or Hint) -->
         <div class="hig-micro-footer">
           <span class="hig-micro-detail" id="hig-micro-detail">Verifying POV Camera Microkernel SHA-256 and linear memory...</span>
           <span class="hig-micro-rate" id="hig-micro-rate"></span>
         </div>
       </div>
 
-      <!-- Error Alert Container (Hidden by default) -->
       <div class="hig-error-card" id="hig-error-card" style="display: none;">
         <div class="hig-error-header">
           <span class="hig-error-code" id="hig-error-code">ERR_BOOTSTRAP_FAILURE</span>
@@ -64,7 +57,6 @@ export const MINIMUM_LOADER_HTML = `
       </div>
     </div>
 
-    <!-- Bottom Footer: System Telemetry Meta -->
     <div class="hig-brand-footer">
       <div class="hig-telemetry-pill">
         <span class="hig-telemetry-dot"></span>
@@ -242,6 +234,8 @@ export const MINIMUM_LOADER_CSS = `
   }
   .hig-fill-secondary {
     background: #38bdf8;
+    position: relative;
+    overflow: hidden;
   }
   .hig-task-title {
     font-size: 12px;
@@ -286,18 +280,28 @@ export const MINIMUM_LOADER_CSS = `
     shrink: 0;
   }
   @keyframes hig-shimmer-anim {
-    0% { background-position: 200% 0; }
-    100% { background-position: -200% 0; }
+    0% { transform: translate3d(-100%, 0, 0); }
+    100% { transform: translate3d(200%, 0, 0); }
   }
   .hig-shimmer {
     width: 100% !important;
-    background: linear-gradient(90deg, 
-      rgba(56, 189, 248, 0.15) 0%, 
-      rgba(56, 189, 248, 0.85) 50%, 
-      rgba(56, 189, 248, 0.15) 100%
+    background: rgba(56, 189, 248, 0.16);
+    transition: none;
+  }
+  .hig-shimmer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    width: 55%;
+    border-radius: 9999px;
+    background: linear-gradient(
+      90deg,
+      rgba(56, 189, 248, 0) 0%,
+      rgba(56, 189, 248, 0.92) 50%,
+      rgba(56, 189, 248, 0) 100%
     );
-    background-size: 200% 100%;
-    animation: hig-shimmer-anim 1.5s infinite linear;
+    will-change: transform;
+    animation: hig-shimmer-anim 1.25s infinite cubic-bezier(0.4, 0, 0.2, 1);
   }
   .hig-error-card {
     margin-top: 10px;

@@ -12,7 +12,7 @@ import { createStadiumDomeSky, updateSkyboxConfig } from './arena/ArenaSky.js';
 import { ArenaLightingManager, updateShadowRuntimeConfig } from './arena/ArenaLighting.js';
 import { updateBoostVisuals } from './arena/ArenaVehicleAnimator.js';
 import { ArenaVehicleRegistry } from './arena/ArenaVehicleRegistry.js';
-import { loadBallAssetInto, loadCarAndPadAssets, loadArenaStadiumMeshes } from './arena/ArenaAssetLoader.js';
+import { loadBallAssetInto, loadCarAndPadAssets, preloadRemainingVehicleAssets, loadArenaStadiumMeshes } from './arena/ArenaAssetLoader.js';
 import { updateBallVisualConfig } from './BallVisual.js';
 import { updateArenaFrame } from './arena/ArenaWorldUpdater.js';
 import { StadiumEnvironmentManager } from './stadium/StadiumEnvironmentManager.js';
@@ -135,7 +135,7 @@ export class ArenaWorld {
   }
 
   async loadCarAndPadAssets() {
-    this.padTemplates = await loadCarAndPadAssets(this.vehicleRegistry, this.boostPadSystem);
+    this.padTemplates = await loadCarAndPadAssets(this.vehicleRegistry, this.boostPadSystem, this.vehiclePreset);
     this.markRenderTreeChanged();
   }
 
@@ -215,9 +215,13 @@ export class ArenaWorld {
   async ensureOpponent() { await this.vehicleRegistry.ensureOpponent(() => this.lighting.ensureOpponentSun()); }
 
   async prepareAssets() {
-    await this.ensureOpponent();
-    if (this.cars[BOT_CAR_INDEX]) this.cars[BOT_CAR_INDEX].visible = false;
-    await Promise.all(this.carBoosts.flatMap(list => Array.isArray(list) ? list.map(e => e?.preload?.()) : []));
+    await Promise.all([
+      this.ensureOpponent().then(() => {
+        if (this.cars[BOT_CAR_INDEX]) this.cars[BOT_CAR_INDEX].visible = false;
+      }),
+      preloadRemainingVehicleAssets(this.vehicleRegistry),
+      ...this.carBoosts.flatMap(list => Array.isArray(list) ? list.map(e => e?.preload?.()) : [])
+    ]);
   }
 
   addCar(teamIndex, visual = this.carVisual, targetIndex = null) { return this.vehicleRegistry.addCar(teamIndex, visual, targetIndex); }

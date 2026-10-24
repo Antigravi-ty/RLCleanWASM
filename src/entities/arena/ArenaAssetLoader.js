@@ -11,10 +11,12 @@ export async function loadBallAssetInto(ballGroup) {
   }
 }
 
-export async function loadCarAndPadAssets(vehicleRegistry, boostPadSystem) {
+export async function loadCarAndPadAssets(vehicleRegistry, boostPadSystem, activePreset = 'fennec') {
   const loaders = vehicleRegistry.carLoaders;
+  const activeId = String(activePreset || 'fennec').toLowerCase();
   if (loaders.loadCustomGlbCarAsset) {
     for (const desc of getAllVehicleDescriptors()) {
+      if (desc.id.toLowerCase() !== activeId) continue;
       try {
         const asset = await loaders.loadCustomGlbCarAsset(desc.id);
         vehicleRegistry.setCustomVehicleAsset?.(desc.id, asset);
@@ -42,6 +44,21 @@ export async function loadCarAndPadAssets(vehicleRegistry, boostPadSystem) {
   }
 
   return padTemplates;
+}
+
+export async function preloadRemainingVehicleAssets(vehicleRegistry) {
+  const loaders = vehicleRegistry?.carLoaders;
+  if (!loaders?.loadCustomGlbCarAsset) return;
+  for (const desc of getAllVehicleDescriptors()) {
+    const id = desc.id.toLowerCase();
+    if (vehicleRegistry.assets?.has?.(id)) continue;
+    try {
+      const asset = await loaders.loadCustomGlbCarAsset(desc.id);
+      vehicleRegistry.setCustomVehicleAsset?.(desc.id, asset);
+    } catch (e) {
+      console.warn(`Custom vehicle asset "${desc.id}" failed to load:`, e);
+    }
+  }
 }
 
 export async function loadArenaStadiumMeshes() {

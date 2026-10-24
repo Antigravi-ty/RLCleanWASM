@@ -1,11 +1,4 @@
 import * as THREE from 'three';
-/**
- * src/game/ShaderPrewarmer.js
- * Scene & Postprocessing Shader Prewarmer (Phase 7.7 Deobfuscation)
- *
- * Pre-compiles WebGL shaders across light and postprocessing pass permutations
- * to eliminate runtime frame drops / micro-stutters during match gameplay.
- */
 
 function isLightNode(obj) {
   return Boolean(obj && (obj.isLight || (THREE.Light && obj instanceof THREE.Light)));
@@ -21,16 +14,13 @@ function isRenderableVisualNode(obj) {
   );
 }
 
-/**
- * Pre-warms shaders by iterating all lighting states and postprocessing permutations.
- * Temporarily un-culls geometry, compiles shaders asynchronously, renders bloom and final passes,
- * and completely restores initial scene & renderer states in a finally block.
- *
- * @param {object} renderer WebGLRenderer
- * @param {object} scene Scene
- * @param {object} camera Camera
- * @param {object} pipeline Postprocessing pipeline { passes, disappearingLightRoots, renderBloom, renderFinal }
- */
+function yieldAnimationFrame() {
+  if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+    return new Promise((resolve) => window.requestAnimationFrame(resolve));
+  }
+  return Promise.resolve();
+}
+
 export async function prewarmSceneShaders(renderer, scene, camera, pipeline = {}) {
   if (!renderer || !scene || !camera) return;
 
@@ -55,7 +45,6 @@ export async function prewarmSceneShaders(renderer, scene, camera, pipeline = {}
   const prevRenderTarget = renderer.getRenderTarget ? renderer.getRenderTarget() : null;
   const prevShadowMapNeedsUpdate = renderer.shadowMap ? renderer.shadowMap.needsUpdate : false;
 
-  // Uncull and ensure non-empty draw ranges for shader compilation
   scene.traverse?.((node) => {
     savedStates.push({
       object: node,
@@ -75,7 +64,6 @@ export async function prewarmSceneShaders(renderer, scene, camera, pipeline = {}
     }
   });
 
-  // Enable all postprocessing passes for warm-up
   for (const { pass } of passes) {
     if (pass) pass.enabled = true;
   }
@@ -121,26 +109,23 @@ export async function prewarmSceneShaders(renderer, scene, camera, pipeline = {}
           if (typeof pipeline.renderFinal === 'function') {
             pipeline.renderFinal();
           }
+
+          await yieldAnimationFrame();
         }
       }
     }
   } finally {
-    // Restore all original object visibilities and frustum culling
     for (const { object: node, visible, frustumCulled } of savedStates) {
       node.visible = visible;
       node.frustumCulled = frustumCulled;
     }
-    // Restore geometry draw ranges
     for (const [geo, range] of savedDrawRanges) {
       geo.setDrawRange?.(range.start, range.count);
     }
-    // Restore pass enabled states
     for (const { pass, enabled } of passes) {
       if (pass) pass.enabled = enabled;
     }
-    // Restore renderer shadowMap and renderTarget
     if (renderer.shadowMap) renderer.shadowMap.needsUpdate = prevShadowMapNeedsUpdate;
     if (renderer.setRenderTarget) renderer.setRenderTarget(prevRenderTarget);
   }
 }
-

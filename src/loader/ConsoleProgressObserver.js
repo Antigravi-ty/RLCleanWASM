@@ -1,20 +1,25 @@
-/**
- * src/loader/ConsoleProgressObserver.js
- * Developer-friendly structured console logger for the Loading Pipeline.
- *
- * Formats:
- * [Loading][Stage 3/7][Step 8/26][34.5%] Physics & Arena Mesh: Streaming RocketSim WASM (1.2 MB / 8.4 MB)
- */
+export function isVerboseLogEnabled() {
+  if (typeof window === 'undefined' || !window.location?.search) return false;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const val = (params.get('log') || '').trim().toLowerCase();
+    return val === 'verbose' || val === 'verbos' || val === '1' || val === 'true';
+  } catch {
+    return false;
+  }
+}
 
 export class ConsoleProgressObserver {
   constructor(options = {}) {
     this.prefix = options.prefix || '[Loading]';
+    this.verbose = options.verbose ?? isVerboseLogEnabled();
     this.minIntervalMs = options.minIntervalMs ?? 120;
     this.lastLogTime = 0;
     this.lastLoggedPercent = -1;
   }
 
   onStageChange({ stageIndex, totalStages, stageTitle, stageDescription }) {
+    if (!this.verbose) return;
     console.log(
       `${this.prefix} ══════════════ [Stage ${stageIndex}/${totalStages}] ${stageTitle} ══════════════\n` +
       `${this.prefix} ${stageDescription}`
@@ -22,16 +27,17 @@ export class ConsoleProgressObserver {
   }
 
   onTaskStart({ taskId, taskName, step, totalSteps, stageIndex, totalStages, overallPercent }) {
+    if (!this.verbose) return;
     console.log(
       `${this.prefix}[Stage ${stageIndex}/${totalStages}][Step ${step}/${totalSteps}][${overallPercent.toFixed(1)}%] > Started: ${taskName}`
     );
   }
 
   onTaskProgress({ taskId, taskName, step, totalSteps, stageIndex, totalStages, overallPercent, taskProgress, detail, bytes }) {
+    if (!this.verbose) return;
     const now = performance.now();
     const currentPct = Math.floor(overallPercent);
 
-    // Throttle progress logs to avoid console spam while keeping real-time responsiveness
     if (now - this.lastLogTime < this.minIntervalMs && currentPct === this.lastLoggedPercent) {
       return;
     }
@@ -53,6 +59,7 @@ export class ConsoleProgressObserver {
   }
 
   onTaskComplete({ taskId, taskName, step, totalSteps, stageIndex, totalStages, overallPercent, durationMs, status }) {
+    if (!this.verbose) return;
     const dur = durationMs ? `${durationMs.toFixed(0)}ms` : '';
     const statusMark = status === 'skipped' ? '[WARN] Skipped' : '[OK] Done';
     console.log(
@@ -75,6 +82,7 @@ export class ConsoleProgressObserver {
   }
 
   onComplete({ totalDurationMs, totalSteps }) {
+    if (!this.verbose) return;
     console.log(
       `${this.prefix} All ${totalSteps} loading steps complete in ${(totalDurationMs / 1000).toFixed(2)}s. Launching game!`
     );

@@ -1,13 +1,9 @@
 import * as THREE from 'three';
-import { getTheme, setTheme, THEMES } from '../../config/themeConfig.js';
+import { getTheme } from '../../config/themeConfig.js';
 import { prewarmSceneShaders } from '../ShaderPrewarmer.js';
 
 export const BLOOM_OCCLUDER_LAYER = 1;
 
-/**
- * RuntimeBloomOcclusion
- * Manages GPU bloom occluder layers, shader compilation, and prewarming.
- */
 export class RuntimeBloomOcclusion {
   constructor(runtime) {
     this.runtime = runtime;
@@ -27,40 +23,33 @@ export class RuntimeBloomOcclusion {
     );
     r.camera.update(r.arena.cars[r.playerCarIndex], r.arena.ball, 0, r.cameraDynamics);
 
-    const originalTheme = getTheme();
-    try {
-      let themeIndex = 0;
-      for (const theme of THEMES) {
-        setTheme(theme, { persist: false });
-        if (typeof document !== 'undefined' && document.documentElement) {
-          document.documentElement.dataset.theme = originalTheme;
+    const activeTheme = getTheme();
+    if (typeof onProgress === 'function') {
+      onProgress(0.5, activeTheme);
+    }
+
+    await prewarmSceneShaders(r.renderer, r.arena.scene, r.camera.camera, {
+      disappearingLightRoots: r.arena.cars,
+      renderBloom: async () => {
+        this.applyBloomOccluders();
+        try {
+          if (typeof r.renderer.compileAsync === 'function') {
+            await r.renderer.compileAsync(r.arena.scene, r.camera.camera);
+          }
+          r.boostBloom.render(r.arena.scene, r.camera.camera);
+        } finally {
+          this.restoreBloomMaterials();
         }
-        await prewarmSceneShaders(r.renderer, r.arena.scene, r.camera.camera, {
-          disappearingLightRoots: r.arena.cars,
-          renderBloom: async () => {
-            this.applyBloomOccluders();
-            try {
-              if (typeof r.renderer.compileAsync === 'function') {
-                await r.renderer.compileAsync(r.arena.scene, r.camera.camera);
-              }
-              r.boostBloom.render(r.arena.scene, r.camera.camera);
-            } finally {
-              this.restoreBloomMaterials();
-            }
-          },
-          renderFinal: () => {
-            if (r.renderer.shadowMap) r.renderer.shadowMap.needsUpdate = true;
-            r.composer.render(0);
-          },
-          passes: [r.speedLinesPass.pass]
-        });
-        themeIndex++;
-        if (typeof onProgress === 'function') {
-          onProgress(themeIndex / THEMES.length, theme);
-        }
-      }
-    } finally {
-      setTheme(originalTheme, { persist: false });
+      },
+      renderFinal: () => {
+        if (r.renderer.shadowMap) r.renderer.shadowMap.needsUpdate = true;
+        r.composer.render(0);
+      },
+      passes: [r.speedLinesPass.pass]
+    });
+
+    if (typeof onProgress === 'function') {
+      onProgress(1.0, activeTheme);
     }
   }
 

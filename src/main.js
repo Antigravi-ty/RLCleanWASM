@@ -1,24 +1,15 @@
 import { MinimumProgressLoader } from './loader/MinimumProgressLoader.js';
-
-/**
- * main.js
- * Application bootstrap entry point.
- * Strictly mounts and paints the zero-dependency minimal loading screen FIRST,
- * then streams styles and dynamically boots the engine pipeline.
- */
+import { isVerboseLogEnabled } from './loader/ConsoleProgressObserver.js';
 
 async function bootApplication() {
   const host = typeof document !== 'undefined' ? document.querySelector('#app') : null;
   const loader = new MinimumProgressLoader(host);
   loader.mount();
 
-  // 1. Stream game styles in parallel without blocking the loader paint
   import('./styles/game.css').catch((err) => {
     console.warn('[Engine] Non-fatal stylesheet stream warning:', err);
   });
 
-  // 2. Yield two animation frames so the browser paints the minimal loader animation
-  //    before downloading, parsing, or evaluating heavy engine/3D/UI module graphs.
   if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
     await new Promise((resolve) => {
       window.requestAnimationFrame(() => {
@@ -32,7 +23,7 @@ async function bootApplication() {
       taskId: 'bootstrap.module_graph',
       taskName: 'Loading Engine Core Modules...',
       step: 1,
-      totalSteps: 10,
+      totalSteps: 8,
       stageIndex: 1,
       totalStages: 6,
       overallPercent: 2,
@@ -41,15 +32,20 @@ async function bootApplication() {
       hint: 'Streaming and linking core runtime & 3D subsystems...'
     });
 
-    const [
-      { bootstrapEngine },
-      { mountGameUI }
-    ] = await Promise.all([
-      import('./game/GameEngine.js'),
-      import('./ui-system/index.tsx')
+    const uiMountPromise = import('./ui-system/index.tsx').then(({ mountGameUI }) => {
+      return host ? mountGameUI(host) : null;
+    });
+
+    const [{ bootstrapEngine }, gameUI] = await Promise.all([
+      import('./game/GameBootstrap.js'),
+      uiMountPromise
     ]);
-    await bootstrapEngine({ loader, mountUI: mountGameUI });
-    console.log('[Engine] Rocket Companion Engine online — Free Play ready.');
+
+    await bootstrapEngine({ loader, gameUI });
+
+    if (isVerboseLogEnabled()) {
+      console.log('[Engine] Rocket Companion Engine online — Free Play ready.');
+    }
   } catch (err) {
     console.error('[Engine] Fatal bootstrap failure:', err);
     loader.onError({
@@ -62,4 +58,3 @@ async function bootApplication() {
 }
 
 bootApplication();
-

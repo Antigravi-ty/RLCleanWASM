@@ -1,30 +1,27 @@
-/**
- * Implements:
- * 1. 7 deterministic stages adhering to the lifecycle architecture specification.
- * 2. "Download First, Parse/Load Later" decoupling for physics meshes and core assets.
- * 3. Numerical progress reporting [0.0..1.0] from each decoupled engine subsystem.
- * 4. Fault-isolated tasks with non-blocking graceful fallbacks (e.g. Bot AI, audio).
- * 5. Explicit determinate / indeterminate task types with professional technical hints.
- */
-
+import {
+  isVerboseLogEnabled,
+  ConsoleProgressObserver
+} from './ConsoleProgressObserver.js';
+import { MinimumProgressLoader } from './MinimumProgressLoader.js';
+import { DualProgressUIAdapter } from './DualProgressUIAdapter.js';
 import { LoadingOrchestrator } from './LoadingOrchestrator.js';
 import { LoadingTask } from './LoadingTask.js';
 import { verifyCameraMicrokernelIntegrity } from '../camera/exempt_pov_microkernel/CameraMicrokernel.js';
 import { auditRequiredAssets, formatMissingAssetsHtml } from '../game/AssetDiagnostics.js';
 import { fetchArenaCollisionManifest, fetchArenaCollisionChunks } from '../physics/RocketSimMeshLoader.js';
 
-/**
- * Builds and configures the standard game engine loading pipeline.
- * @param {GameRuntime} runtime
- * @param {object} [options={}]
- * @returns {LoadingOrchestrator}
- */
+export {
+  isVerboseLogEnabled,
+  ConsoleProgressObserver,
+  MinimumProgressLoader,
+  DualProgressUIAdapter,
+  LoadingOrchestrator,
+  LoadingTask
+};
+
 export function buildEngineLoadingPipeline(runtime, options = {}) {
   const orchestrator = new LoadingOrchestrator(options);
 
-  // =========================================================================
-  // Stage 1: Security Preflight (POV Camera Microkernel Integrity)
-  // =========================================================================
   orchestrator.registerTask(
     new LoadingTask({
       id: 'preflight.camera_microkernel',
@@ -44,9 +41,6 @@ export function buildEngineLoadingPipeline(runtime, options = {}) {
     })
   );
 
-  // =========================================================================
-  // Stage 2: Static Asset Diagnostics & HTTP Validation
-  // =========================================================================
   orchestrator.registerTask(
     new LoadingTask({
       id: 'diagnostics.static_assets',
@@ -73,11 +67,6 @@ export function buildEngineLoadingPipeline(runtime, options = {}) {
     })
   );
 
-  // =========================================================================
-  // Stage 3: Physics & Collision Mesh (Download First, Initialize Later)
-  // =========================================================================
-
-  // 3.1 Download collision manifest
   orchestrator.registerTask(
     new LoadingTask({
       id: 'physics.manifest.fetch',
@@ -97,7 +86,6 @@ export function buildEngineLoadingPipeline(runtime, options = {}) {
     })
   );
 
-  // 3.2 Stream 16 collision mesh chunks concurrently with byte tracking
   orchestrator.registerTask(
     new LoadingTask({
       id: 'physics.mesh.stream',
@@ -124,7 +112,6 @@ export function buildEngineLoadingPipeline(runtime, options = {}) {
     })
   );
 
-  // 3.3 Initialize RocketSim WASM & assemble collision space in heap
   orchestrator.registerTask(
     new LoadingTask({
       id: 'physics.engine.init',
@@ -146,9 +133,6 @@ export function buildEngineLoadingPipeline(runtime, options = {}) {
     })
   );
 
-  // =========================================================================
-  // Stage 4: 3D Geometry, Models & UI Controls
-  // =========================================================================
   orchestrator.registerTask(
     new LoadingTask({
       id: 'geometry.scene.build',
@@ -169,9 +153,6 @@ export function buildEngineLoadingPipeline(runtime, options = {}) {
     })
   );
 
-  // =========================================================================
-  // Stage 5: Shader Pipeline Prewarming & GPU Material Compilation
-  // =========================================================================
   orchestrator.registerTask(
     new LoadingTask({
       id: 'shaders.prewarm',
@@ -193,9 +174,6 @@ export function buildEngineLoadingPipeline(runtime, options = {}) {
     })
   );
 
-  // =========================================================================
-  // Stage 6: Engine Ignition & 120Hz Clock Start
-  // =========================================================================
   orchestrator.registerTask(
     new LoadingTask({
       id: 'ignition.clock_scheduler',
@@ -219,14 +197,13 @@ export function buildEngineLoadingPipeline(runtime, options = {}) {
   return orchestrator;
 }
 
-/**
- * Executes non-essential asset loading in the background after Training Mode is interactive.
- * Reports progress to console and signals completion when all deferred subsystems synchronize.
- * @param {GameRuntime} runtime
- * @param {(category: string, ratio: number, message: string) => void} [onProgress]
- */
 export async function startBackgroundAssetPipeline(runtime, onProgress = null) {
-  console.log('[Loading] > Background asset pipeline started for non-essential subsystems...');
+  const verbose = isVerboseLogEnabled();
+  const startTime = performance.now();
+
+  if (verbose) {
+    console.log('[Loading] > Background asset pipeline started for non-essential subsystems...');
+  }
 
   let notifyStore = null;
   try {
@@ -271,10 +248,14 @@ export async function startBackgroundAssetPipeline(runtime, onProgress = null) {
           const msg = `Audio pool: ${loaded}/${total} (${filename})`;
           if (onProgress) onProgress('audio', ratio, msg);
           updateOverall('audio', ratio, msg);
-          console.log(`[Loading][Background] ${msg}`);
+          if (verbose) {
+            console.log(`[Loading][Background] ${msg}`);
+          }
         });
         updateOverall('audio', 1.0, '41-channel audio architecture ready.');
-        console.log('[Loading][Background] 41-channel audio architecture ready.');
+        if (verbose) {
+          console.log('[Loading][Background] 41-channel audio architecture ready.');
+        }
       }
     },
     {
@@ -295,7 +276,9 @@ export async function startBackgroundAssetPipeline(runtime, onProgress = null) {
               const msg = `Font loaded: ${f} (${loaded}/${fontList.length})`;
               if (onProgress) onProgress('fonts', ratio, msg);
               updateOverall('fonts', ratio, msg);
-              console.log(`[Loading][Background] ${msg}`);
+              if (verbose) {
+                console.log(`[Loading][Background] ${msg}`);
+              }
             })
           );
           updateOverall('fonts', 1.0, 'Web fonts preloaded.');
@@ -310,18 +293,25 @@ export async function startBackgroundAssetPipeline(runtime, onProgress = null) {
           const msg = `Bot policy: ${botId} (${loaded}/${total})`;
           if (onProgress) onProgress('bot', ratio, msg);
           updateOverall('bot', ratio, msg);
-          console.log(`[Loading][Background] ${msg}`);
+          if (verbose) {
+            console.log(`[Loading][Background] ${msg}`);
+          }
         });
         updateOverall('bot', 1.0, 'AI Bot policies synchronized.');
-        console.log('[Loading][Background] AI Bot policies synchronized.');
+        if (verbose) {
+          console.log('[Loading][Background] AI Bot policies synchronized.');
+        }
       }
     }
   ];
 
   try {
     await Promise.allSettled(backgroundTasks.map((t) => t.run()));
-    console.log('[Loading] ══════════════ [Background Pipeline] All Assets Loaded ══════════════');
-    console.log('[Loading] Background asset pipeline complete — all deferred subsystems synchronized.');
+    if (verbose) {
+      const elapsedSec = ((performance.now() - startTime) / 1000).toFixed(2);
+      console.log('[Loading] ══════════════ [Background Pipeline] All Assets Loaded ══════════════');
+      console.log(`[Loading] Background asset pipeline complete in ${elapsedSec}s — all deferred subsystems synchronized.`);
+    }
     if (notifyStore) {
       notifyStore.completeOngoingNotification(taskId, {
         content: 'All deferred assets synchronized',

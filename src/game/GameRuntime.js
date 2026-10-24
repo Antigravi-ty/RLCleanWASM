@@ -147,16 +147,6 @@ export class GameRuntime {
   get scratchVelocity() { return this.cameraSubsystem.scratchVelocity; }
   get cameraDynamics() { return this.cameraSubsystem.cameraDynamics; }
 
-  async init() {
-    const { buildEngineLoadingPipeline } = await import('../loader/engineLoadingPipeline.js');
-    const orchestrator = buildEngineLoadingPipeline(this, this.options);
-    if (this.options?.bootstrapReporter) {
-      orchestrator.subscribe(this.options.bootstrapReporter);
-    }
-    await orchestrator.run();
-    return this;
-  }
-
   async setupPhysics(options = {}) {
     return setupRuntimePhysics(this, options);
   }

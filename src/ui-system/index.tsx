@@ -12,6 +12,7 @@ export interface GameUIRuntimeHandle {
   openMenu: (route?: ActiveMenuRoute) => void;
   closeMenu: () => void;
   toggleMenu: () => void;
+  attachToRuntime: (gameRuntime: any) => void;
   syncVisualMaterials?: () => void;
   destroy: () => void;
 }
@@ -31,18 +32,25 @@ export function mountGameUI(
     container.appendChild(rootEl);
   }
 
+  let activeRuntime = gameRuntime;
   const root: Root = createRoot(rootEl);
   root.render(<GameUIRoot portalContainer={rootEl} />);
 
-  if (gameRuntime) {
-    attachGameRuntimeBridge(gameRuntime);
+  if (activeRuntime) {
+    attachGameRuntimeBridge(activeRuntime);
   }
 
   return {
     openMenu: (route = 'main-menu') => useAppStore.getState().openMenu(route),
     closeMenu: () => useAppStore.getState().closeMenu(),
     toggleMenu: () => useAppStore.getState().toggleMenu(),
-    syncVisualMaterials: () => syncMaterialsToGame(gameRuntime),
+    attachToRuntime: (nextRuntime: any) => {
+      activeRuntime = nextRuntime;
+      if (activeRuntime) {
+        attachGameRuntimeBridge(activeRuntime);
+      }
+    },
+    syncVisualMaterials: () => syncMaterialsToGame(activeRuntime),
     destroy: () => {
       perfTelemetryStore.setSampler(null);
       root.unmount();
